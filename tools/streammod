@@ -1,0 +1,376 @@
+#!/bin/bash
+SOURCE_DIR="$(dirname "$0")"
+
+source $SOURCE_DIR/functions/functions.sh
+source /etc/profile
+
+OPERATION=$1
+REGEXP='^([0-2][0-9]|3[0-1])\.(0[1-9]|1[0-2])\.202[1-9]\s([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+
+if [ -z "$OPERATION" ];
+then
+    echo "$(basename "$0"): try '$(basename "$0") --help' for more information"
+    exit 1
+fi
+
+CONTAINER_ID=$(docker ps -aqf "name=mysql")
+
+case $OPERATION in
+    "--add")
+        echo "Available casters: "
+        castermod --list --ids
+        read -r -p "What's the caster ID (Use the list above): " CASTER
+
+        if ! db_get_caster_name_with_id $CASTER > /dev/null;
+        then
+            echo "$CASTER is not a valid caster ID"
+            exit 1
+        fi
+
+        echo "Available channels: "
+        channelmod --list --ids
+        read -r -p "What's the channel ID (Use the list above): " CHANNEL
+
+        if ! db_get_channel_name_with_id $CHANNEL > /dev/null;
+        then
+            echo "$CHANNEL is not a valid channel ID"
+            exit 1
+        fi
+
+        echo "Available games: "
+        gamemod --list --ids
+        read -r -p "What's the game ID? (Use the list above):  " GAME
+
+        if ! db_get_game_name_with_id $GAME > /dev/null;
+        then
+            echo "$GAME is not a valid game ID"
+            exit 1
+        fi
+
+        read -r -p "Twitch title for the stream? (Format 'Kanaliiga <game> <series> | <Division> | <Caster> & <Co-Caster>'): " TITLE
+        read -r -p "Start time of the stream? (Format: DD.MM.YYYY HH:MM): " START_TIME
+
+        if ! [[ "$START_TIME" =~ $REGEXP ]];
+        then
+            echo "Start time is not in a valid format"
+            exit 1
+        fi
+
+        echo "Container will be started 30 minutes before the stream, if possible."
+
+        read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM): " END_TIME
+
+        if ! [[ "$END_TIME" =~ $REGEXP ]];
+        then
+            echo "Start time is not in a valid format"
+            exit 1
+        fi
+
+        echo "Container will be stopped 30 minutes after the stream, if possible."
+
+        printf "\n\n"
+
+        echo "Creating a stream with details:
+    Caster: $(db_get_caster_name_with_id $CASTER)
+    Channel: $(db_get_channel_name_with_id $CHANNEL)
+    Game: $(db_get_game_name_with_id $GAME)
+    Twitch title: $TITLE
+    Start time: $START_TIME
+    End time: $END_TIME
+        "
+
+        read -r -p "Are you sure you want to create a new game with above details? [y/N] " RESPONSE
+        case "$RESPONSE" in
+            [yY][eE][sS]|[yY])
+                docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %T'), STR_TO_DATE('$END_TIME','%d.%m.%Y %T'))"
+                if [ $? -eq 0 ];
+                then
+                    exit 0
+                else
+                    echo "An error occured while adding the stream. Possible reasons:
+    - streams_et_chk: The stream end time was before the start time."
+                    exit 1
+                fi
+            ;;
+            *)
+                exit 1
+            ;;
+        esac
+    ;;
+    "--add-proxy")
+        CHANNEL_NAME="proxy-only"
+        echo "Available casters: "
+        castermod --list --ids
+        read -r -p "What's the caster ID (Use the list above): " CASTER
+
+        if ! db_get_caster_name_with_id $CASTER > /dev/null;
+        then
+            echo "$CASTER is not a valid caster ID"
+            exit 1
+        fi
+
+        read -r -p "Is this second simultaneous proxy container? [y/N] " SIMULTANEOUS
+
+        case "$SIMULTANEOUS" in
+            [yY][eE][sS]|[yY])
+                CHANNEL_NAME="proxy-only2"
+            ;;
+        esac
+
+        read -r -p "Start time of the stream? (Format: DD.MM.YYYY HH:MM): " START_TIME
+
+        if ! [[ "$START_TIME" =~ $REGEXP ]];
+        then
+            echo "Start time is not in a valid format"
+            exit 1
+        fi
+
+        echo "Container will be started 30 minutes before the stream, if possible."
+
+        read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM): " END_TIME
+
+        if ! [[ "$END_TIME" =~ $REGEXP ]];
+        then
+            echo "Start time is not in a valid format"
+            exit 1
+        fi
+
+        echo "Container will be stopped 30 minutes after the stream, if possible."
+
+        printf "\n\n"
+
+        echo "Creating a proxy server with details:
+    Caster: $(db_get_caster_name_with_id $CASTER)
+    Start time: $START_TIME
+    End time: $END_TIME
+        "
+
+        read -r -p "Are you sure you want to create a proxy server with above details? [y/N] " RESPONSE
+        case "$RESPONSE" in
+            [yY][eE][sS]|[yY])
+                echo "Using channel $CHANNEL_NAME"
+                CHANNEL=$(channelmod --get-id $CHANNEL_NAME)
+                echo "Channel is: $CHANNEL"
+                docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %T'), STR_TO_DATE('$END_TIME','%d.%m.%Y %T'))"
+                if [ $? -eq 0 ];
+                then
+                    exit 0
+                else
+                    echo "An error occured while adding the stream. Possible reasons:
+    - streams_et_chk: The stream end time was before the start time."
+                    exit 1
+                fi
+            ;;
+            *)
+                exit 1
+            ;;
+        esac
+    ;;
+    "--live")
+        OPTION=$2
+        if [ -z $OPTION ];
+        then
+            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND s.live = true"
+            exit 0
+        else
+            case $OPTION in
+                "--ids")
+                    docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT id FROM streams WHERE live = true"
+                    exit 0
+                ;;
+            esac
+        fi
+    ;;
+    "--upcoming")
+        OPTION=$2
+        if [ -z $OPTION ];
+        then
+            echo "Upcoming streams: "
+            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND ch.access_token IS NOT NULL and start_time >= NOW() ORDER BY start_time"
+            echo "Upcoming proxies"
+            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, s.start_time, s.end_time FROM casters ca, channels ch, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND ch.name = 'proxy-only' AND start_time >= NOW() AND ch.access_token IS NULL ORDER BY start_time"
+            exit 0
+        else
+            case $OPTION in
+                "--ids")
+                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT id FROM streams WHERE start_time >= NOW()"
+                    exit 0
+                ;;
+            esac
+        fi
+    ;;
+    "--set")
+        OPTION=$2
+        if [ -z $OPTION ];
+        then
+            echo "No option was provided. Try '$(basename "$0") --help' for more information."
+            exit 1
+        else
+            ID=$3
+            if [ -z $ID ];
+            then
+                echo "No Stream ID was provided. Try '$(basename "$0") --help' for more information."
+                exit 1
+            fi
+
+            case $OPTION in
+                "live")
+                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE streams SET live = true WHERE id = $ID"
+                    exit 0
+                ;;
+                "nonlive")
+                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE streams SET live = false WHERE id = $ID"
+                    exit 0
+                ;;
+            esac
+        fi
+    ;;
+    "--starting")
+        OPTION=$2
+        if [ -z $OPTION ];
+        then
+            echo "Starting streams:"
+            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) ORDER BY start_time"
+            echo "Starting proxies:"
+            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, s.start_time, s.end_time FROM casters ca, channels ch, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) ORDER BY start_time"
+            exit 0
+        else
+            case $OPTION in
+                "--ids")
+                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT id FROM streams WHERE start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) AND skip = false"
+                    exit 0
+                ;;
+                *)
+                    echo "Option not recognised. Try '$(basename "$0") --help' for more information."
+                    exit 1
+                ;;
+            esac
+        fi
+    ;;
+    "--ending")
+        OPTION=$2
+        if [ -z $OPTION ];
+        then
+            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND end_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) ORDER BY end_time"
+            exit 0
+        else
+            case $OPTION in
+                "--ids")
+                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT id FROM streams WHERE end_time BETWEEN DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND DATE_ADD(NOW(), INTERVAL 30 MINUTE)"
+                    exit 0
+                ;;
+                *)
+                    echo "Option not recognised. Try '$(basename "$0") --help' for more information."
+                    exit 1
+                ;;
+            esac
+        fi
+    ;;
+    "--warnings")
+        OPTION=$2
+        if [ -z $OPTION ];
+        then
+            echo "Warning time not set. Try '$(basename "$0") --help' for more information."
+            exit 1
+        else
+            docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT id FROM streams WHERE DATE_FORMAT(DATE_ADD(NOW(), INTERVAL $OPTION MINUTE), '%d.%m.%Y %H:%i') = DATE_FORMAT(end_time, '%d.%m.%Y %H:%i')"
+            exit 0
+        fi
+    ;;
+    "--ended")
+        OPTION=$2
+        if [ -z $OPTION ];
+        then
+            echo "Warning time not set. Try '$(basename "$0") --help' for more information."
+            exit 1
+        else
+            docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT id FROM streams WHERE DATE_FORMAT(DATE_SUB(NOW(), INTERVAL $OPTION MINUTE), '%d.%m.%Y %H:%i') = DATE_FORMAT(end_time, '%d.%m.%Y %H:%i')"
+            exit 0
+        fi
+    ;;
+    "--extend")
+        OPTION=$2
+        if [ -z $OPTION ];
+        then
+            echo "Stream id was not given. Try '$(basename "$0") --help' for more information."
+            exit 1
+        fi
+
+        docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET end_time = DATE_ADD(end_time, INTERVAL 30 MINUTE) WHERE id = '$OPTION'"
+    ;;
+    "--skip")
+        OPTION=$2
+        if [ -z $OPTION ];
+        then
+            echo "Stream id was not given. Try '$(basename "$0") --help' for more information."
+            exit 1
+        fi
+
+        docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET skip = true WHERE id = '$OPTION'"
+    ;;
+    "--unskip")
+        OPTION=$2
+        if [ -z $OPTION ];
+        then
+            echo "Stream id was not given. Try '$(basename "$0") --help' for more information."
+            exit 1
+        fi
+
+        docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET skip = false WHERE id = '$OPTION'"
+    ;;
+    "--help")
+        echo "$(basename "$0") -- Script to start or stop RTMP containers.
+
+    Usage: $(basename "$0") <operation>
+
+    Allowed operations: --list
+    --ended
+        Used to show a list of ended streams that have container running. Used internally on code. Not meant for user use, check --ending instead.
+
+    --ending
+        Used to show a list of ending streams.
+
+        Usage: $(basename "$0") --ending
+
+    --extend <id>
+        Extend container lifetime by 30 minutes
+
+        Usage: $(basename "$0") --extend <id>
+
+        Eg. $(basename "$0") --extend 1
+
+        Parameters:
+        - id: id of the stream
+
+    --list
+        Used for listing available channels. Will list all channels present in the database.
+
+        Usage: $(basename "$0") --list
+
+    --live
+        Used to show a list of live streams.
+
+        Usage: $(basename "$0") --live
+
+    --set live|nonlive
+        Used to set stream live/nonlive. Used internally on code. Not meant for user use.
+
+    --starting
+        Used to show a list of starting streams. Used internally on code. Not meant for user use, check --upcoming instead.
+
+    --upcoming
+        Used to show a list of starting streams.
+
+        Usage: $(basename "$0") --upcoming
+
+    --warnings
+        Used to show ending streams. Used internally on code. Not meant for user use, check --ending instead.
+    "
+    exit 0
+
+    ;;
+    *)
+        echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+        exit 1
+    ;;
+esac

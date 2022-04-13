@@ -1,0 +1,24 @@
+---
+# scoutapp/tasks
+
+- name: Install the latest gem
+  apt:
+    name: rubygems
+    state: latest
+
+- name: Get installed scoutapp version
+  shell: gem list scout_realtime |grep scout_realtime |awk '{print $2}' |sed 's/(//g' |sed 's/)//g'
+  register: scoutapp_installed_version
+
+- block:
+    - name: Uninstall old version of scoutapp
+      shell: yes |gem uninstall -y scout_realtime
+      when: scoutapp_installed_version.stdout != ""
+
+    - name: Install scoutapp
+      shell: gem install scout_realtime -v {{ scoutapp_version }}
+
+    - name: Run scoutapp
+      shell: scout_realtime
+  when:
+    - scoutapp_installed_version.stdout != scoutapp_version

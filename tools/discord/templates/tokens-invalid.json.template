@@ -1,0 +1,14 @@
+{
+    "avatar_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png",
+    "username": "RTMP Server",
+    "embeds": [{
+        "author": {
+          "name": "Twitch Tokens invalid",
+          "icon_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png"
+        },
+        "description": "Twitch OAuth tokens are invalid",
+        "color": "13369344"
+    }],
+    "content":"<@639003541179990046>"
+
+}

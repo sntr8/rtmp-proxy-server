@@ -1,0 +1,18 @@
+---
+#vagrant/tasks
+
+- name: Check if grub is configured
+  stat:
+    path: /etc/ansible_grub.lck
+  register: grub_lock
+
+- name: Configure grub
+  shell:
+    cmd: "echo \"set grub-pc/install_devices /dev/sda\" | debconf-communicate"
+  when: grub_lock.stat.exists == false
+
+- name: Set grub lock file
+  copy:
+    dest: /etc/ansible_grub.lck
+    content: ""
+  when: grub_lock.stat.exists == false

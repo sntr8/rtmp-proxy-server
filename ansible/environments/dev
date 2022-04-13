@@ -1,0 +1,11 @@
+---
+all:
+  children:
+    dev:
+      children:
+        stream:
+          hosts:
+            dev.kanaliiga.fi:
+              ansible_host: 62.204.14.107
+              ansible_user: sntr
+              ansible_python_interpreter: auto

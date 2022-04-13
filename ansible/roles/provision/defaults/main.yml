@@ -1,0 +1,18 @@
+---
+#provision/defaults
+
+env_vars:
+  ADMIN_EMAIL: "santeri.lehtonen@kanaliiga.fi"
+  FQDN: "{{ fqdn }}"
+  MYSQL_USER: "{{ mysql_user }}"
+  MYSQL_PASSWORD: "{{ mysql_password }}"
+  MYSQL_ROOT_PASSWORD: "{{ mysql_root_password }}"
+  MYSQL_DATABASE: "{{ mysql_database }}"
+  PATH: "$PATH:/opt/tools"
+  GIT_USER: "{{ git_user }}"
+  GIT_TOKEN: "{{ git_token }}"
+  IMAGE_VERSION: "{{ image_version }}"
+  DISCORD_WEBHOOK_PUBG: "{{ discord_webhook_pubg }}"
+  DISCORD_WEBHOOK_OTHERS: "{{ discord_webhook_others }}"
+  TOURNAMENT_BANNER: "qualifiers"
+  CONFIG_BRANCH: "{{ config_branch }}"

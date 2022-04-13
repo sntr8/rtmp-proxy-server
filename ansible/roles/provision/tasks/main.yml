@@ -1,0 +1,96 @@
+---
+# provision/tasks
+
+- name: Add a Kanaliiga user
+  user:
+    name: "{{ kanaliiga_user }}"
+    shell: /bin/bash
+    groups: sudo
+  register: add_kanaliiga_user
+
+- name: Generate password for the Kanaliiga user
+  set_fact:
+    kanaliiga_pwd: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+  when: add_kanaliiga_user.changed
+
+- name: Change password for the Kanaliiga user
+  user:
+    name: "{{ kanaliiga_user }}"
+    password: "{{ kanaliiga_pwd | password_hash('sha512') }}"
+  when: add_kanaliiga_user.changed
+
+- name: Write the password of the user to the home directory
+  copy:
+    content: "{{ kanaliiga_pwd }}"
+    dest: /home/{{ kanaliiga_user }}/.pwd.txt
+  when: add_kanaliiga_user.changed
+
+- name: Check the default editor
+  stat:
+    path: /etc/alternatives/editor
+  register: editor
+
+- name: Install packages
+  apt:
+    name:
+    - git
+    - vim
+    - librtmp-dev
+    - curl
+    - jq
+    state: latest
+
+- name: Set vim as the default editor
+  shell: "/usr/sbin/update-alternatives --set editor /usr/bin/vim.tiny || /usr/bin/update-alternatives --set editor /usr/bin/vim.tiny"
+  when: editor.stat.lnk_source != '/usr/bin/vim.tiny'
+
+- import_tasks: upgrade.yml
+  tags: upgrade
+
+- name: Create directories
+  file:
+    path: /opt/{{ item }}
+    state: directory
+  with_items:
+    - mysql/data
+    - haproxy
+    - tools
+    - letsencrypt
+
+- name: Add /opt/tools to secure_path
+  lineinfile:
+    path: /etc/sudoers
+    regexp: '^Defaults[\t\s]+secure_path'
+    line: Defaults        secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/tools"
+
+- name: Copy tools to server
+  copy:
+    src: ../tools/
+    dest: /opt/tools/
+    mode: 700
+
+- name: Add cron_worker.sh to cron
+  cron:
+    name: "cron_worker"
+    minute: "*"
+    job: "/opt/tools/cron_worker.sh >> /var/log/cron_worker.log"
+    user: root
+
+- name: Add logrotate to cron_worker.sh
+  copy:
+    src: cron_worker.logrotate
+    dest: /etc/logrotate.d/
+
+- name: Set enviroment variables
+  lineinfile:
+    path: /etc/profile
+    regexp: '^{{ item.key }}='
+    line: "{{ item.key }}={{ item.value }}"
+  with_dict: "{{ env_vars }}"
+
+- name: Set image versions
+  lineinfile:
+    path: /etc/profile
+    regexp: '^{{ item.key }}='
+    line: "{{ item.key }}={{ item.value }}"
+  with_dict: "{{ image_versions }}"

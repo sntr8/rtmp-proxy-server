@@ -1,0 +1,13 @@
+{
+    "avatar_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png",
+    "username": "RTMP Server",
+    "embeds": [{
+        "author": {
+          "name": "nginx-rtmp-$CASTER",
+          "icon_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png"
+        },
+        "description": "Stream container startup failed and further startup attempts has been suspended.\n$MESSAGE",
+        "color": "13369344"
+    }],
+    "content":"<@$DISCORD_ID>"
+}

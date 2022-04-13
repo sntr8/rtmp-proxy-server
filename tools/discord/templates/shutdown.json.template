@@ -1,0 +1,12 @@
+{
+    "avatar_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png",
+    "username": "RTMP Server",
+    "embeds": [{
+        "author": {
+          "name": "nginx-rtmp-$CASTER",
+          "icon_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png"
+        },
+        "description": "Stream container has been stopped.",
+        "color": "0"
+    }]
+}

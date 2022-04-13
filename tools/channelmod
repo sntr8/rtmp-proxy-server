@@ -1,0 +1,242 @@
+#!/bin/bash
+SOURCE_DIR="$(dirname "$0")"
+
+source $SOURCE_DIR/functions/functions.sh
+source /etc/profile
+
+OPERATION=$1
+
+if [ -z "$OPERATION" ];
+then
+    echo "$(basename "$0"): try '$(basename "$0") --help' for more information"
+    exit 1
+fi
+
+CONTAINER_ID=$(docker ps -aqf "name=mysql")
+
+case $OPERATION in
+    "--list")
+        OPTION=$2
+
+        if [ -z $OPTION ];
+        then
+            echo "Available channels:"
+            docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT name FROM channels WHERE access_token IS NOT NULL ORDER by name"
+            exit 0
+        fi
+
+        case $OPTION in
+            "--ids")
+                docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT id, name FROM channels WHERE access_token IS NOT NULL AND name != 'proxy-only' ORDER BY id"
+                exit 0
+            ;;
+            *)
+                echo "Option $OPTION not recognised. Try '$(basename "$0") --help' for more information."
+            ;;
+        esac
+    ;;
+    "--get-id")
+        CHANNEL_NAME="$2"
+
+        if [ -z $CHANNEL_NAME ];
+        then
+            echo "Channel name was not provided"
+            exit 1
+        fi
+
+        docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT id FROM channels WHERE name = '$CHANNEL_NAME'"
+        exit 0
+    ;;
+    "--refresh-tokens")
+        CHANNEL=$2
+
+        if [ -z $CHANNEL ];
+        then
+            echo "Channel was not given. Try '$(basename "$0") --help' for more information."
+            exit 1
+        fi
+
+        if ! search_channel "$CHANNEL";
+        then
+            exit 1
+        fi
+
+        twitch_refresh_tokens $CHANNEL;
+
+        if [ $? -eq 0 ];
+        then
+            exit 0
+        else
+            exit 1
+        fi
+    ;;
+    "--set")
+        CHANNEL=$2
+        KEY=$3
+        VALUE=$4
+
+        if [ -z $CHANNEL ];
+        then
+            echo "Channel was not given. Try '$(basename "$0") --help' for more information."
+            exit 1
+        fi
+
+        if ! search_channel "$CHANNEL";
+        then
+            exit 1
+        fi
+
+        if [ -z $KEY ];
+        then
+            echo "Key-value pair was not given. Try '$(basename "$0") --help' for more information."
+            exit 1
+        fi
+
+        if [ -z $VALUE ];
+        then
+            echo "Key-value pair was not given. Try '$(basename "$0") --help' for more information."
+            exit 1
+        fi
+
+        case $KEY in
+            "access_token")
+                if docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE channels SET access_token = '$VALUE' WHERE name = '$CHANNEL'";
+                then
+                    echo "Access token updated for channel $CHANNEL"
+                    exit 0
+                else
+                    echo "Access token change failed"
+                fi
+            ;;
+            "client_id")
+                if docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE channels SET client_id = '$VALUE' WHERE name = '$CHANNEL'";
+                then
+                    echo "Client ID updated for channel $CHANNEL"
+                    exit 0
+                else
+                    echo "Client ID change failed"
+                fi
+            ;;
+            "refresh_token")
+                if docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE channels SET refresh_token = '$VALUE' WHERE name = '$CHANNEL'";
+                then
+                    echo "Refresh token updated for channel $CHANNEL"
+                    exit 0
+                else
+                    echo "Refresh token change failed"
+                fi
+            ;;
+            *)
+                echo "Key not recognised. Allowed values are: access_token, client_id and refresh_token"
+                exit 1
+            ;;
+        esac
+    ;;
+    "--test-tokens")
+        CHANNEL=$2
+
+        if [ -z $CHANNEL ];
+        then
+            echo "Channel was not given. Try '$(basename "$0") --help' for more information."
+            exit 1
+        fi
+
+        if ! search_channel "$CHANNEL";
+        then
+            exit 1
+        fi
+
+        twitch_check_accees_token $CHANNEL
+
+        if [ $? -eq 0 ];
+        then
+            echo "Tokens are valid for $CHANNEL"
+            exit 0
+        else
+            echo "ERROR: Tokens did not validate for $CHANNEL"
+            exit 1
+        fi
+    ;;
+    "--get")
+        CHANNEL=$2
+        KEY=$3
+
+        if [ -z $CHANNEL ];
+        then
+            echo "Channel was not given. Try '$(basename "$0") --help' for more information."
+            exit 1
+        fi
+
+        if ! search_channel "$CHANNEL";
+        then
+            exit 1
+        fi
+
+        if [ -z $KEY ];
+        then
+            echo "Key was not given. Try '$(basename "$0") --help' for more information."
+            exit 1
+        fi
+
+        case $KEY in
+            "refresh_token")
+                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT refresh_token FROM channels WHERE name = '$CHANNEL'"
+                exit 0
+            ;;
+            *)
+                echo "Key not recognised. Allowed values are: refresh_token"
+                exit 1
+            ;;
+        esac
+    ;;
+    "--help")
+        echo "$(basename "$0") -- Script to start or stop RTMP containers.
+
+    Usage: $(basename "$0") <operation>
+
+    Allowed operations: --get, --get-proxy-id, --list, --refresh-tokens, --set
+    --get
+        Used for fetching values from database.
+
+        Usage: $(basename "$0") --get channel key
+
+        Parameters:
+            - channel: Name of the channel
+            - key: Key of the value
+    --get-proxy-id
+        Used for fetching the channel ID for proxy-only channel
+
+        Usage: $(basename "$0") --get-proxy-id
+    --list
+        Used for listing available channels. Will list all channels present in the database.
+
+        Usage: $(basename "$0") --list
+            - Shows names of available channels
+
+        Usage: $(basename "$0") --list <option>
+
+        Options:
+            --ids: List IDs of channels
+    --refresh-tokens
+        Used for manually start token refresh process
+
+        Usage: $(basename "$0") --refresh-tokens <channel>
+
+        Parameters:
+            --channel: Channel that tokens needs to be refreshed
+    --set
+        Used for setting values to database
+
+        Usage: $(basename "$0") --set channel key value
+
+        Parameters:
+            - channel: Name of the channel
+            - key: Key of the value
+            - value: Value for the key
+    "
+
+    ;;
+    *)
+        echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+    ;;
+esac

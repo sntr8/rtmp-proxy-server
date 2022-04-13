@@ -1,0 +1,19 @@
+fqdn: sand-stream.kanaliiga.fi
+mysql_user: mysql
+mysql_password: "{{ vault_mysql_password }}"
+mysql_root_password: "{{ vault_mysql_root_password }}"
+mysql_database: stream
+git_user: stream-dev
+git_token: "{{ vault_git_token }}"
+image_version: devel
+config_branch: master
+discord_webhook_pubg: "{{ vault_discord_webhook_pubg }}"
+discord_webhook_others: "{{ vault_discord_webhook_others }}"
+
+image_versions:
+  HAPROXY_VERSION: "$IMAGE_VERSION"
+  MYSQL_VERSION: "$IMAGE_VERSION"
+  NGINX_HTTP_VERSION: "$IMAGE_VERSION"
+  NGINX_RTMP_DELAYER_VERSION: "$IMAGE_VERSION"
+  NGINX_RTMP_PROXY_VERSION: "$IMAGE_VERSION"
+  PHP_FPM_VERSION: "$IMAGE_VERSION"

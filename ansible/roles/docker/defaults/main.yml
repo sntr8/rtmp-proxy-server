@@ -1,0 +1,5 @@
+---
+# docker/defaults
+
+docker_version: 5:20.10.13~3-0~debian-buster
+containerdio_version: 1.5.10-1

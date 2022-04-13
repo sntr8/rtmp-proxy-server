@@ -1,0 +1,15 @@
+---
+- hosts: sand
+  roles:
+    - vagrant
+  become: yes
+
+- hosts: stream
+  roles:
+    - role: provision
+      tags: provision
+    - role: scoutapp
+      tags: scoutapp
+    - role: docker
+      tags: docker
+  become: yes

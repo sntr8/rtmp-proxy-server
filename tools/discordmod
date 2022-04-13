@@ -1,0 +1,60 @@
+#!/bin/bash
+
+SOURCE_DIR="$(dirname "$0")"
+
+source $SOURCE_DIR/functions/functions.sh
+source /etc/profile
+
+CASE=$1
+STREAM_ID=$2
+MESSAGE=$(echo "$3" |cut -c -500)
+WEBHOOK_URL=$DISCORD_WEBHOOK_OTHERS
+SESSION_ID=$(od -x /dev/urandom | head -1 | awk '{OFS="-"; print $2$3,$4,$5,$6,$7$8$9}')
+
+if [ -z "$STREAM_ID" ];
+then
+    mkdir /tmp/$SESSION_ID
+    cp $SOURCE_DIR/discord/templates/$CASE.json.template /tmp/$SESSION_ID/$CASE.json.template
+    envsubst < /tmp/$SESSION_ID/$CASE.json.template > /tmp/$SESSION_ID/$CASE.json
+
+    curl -H "Content-Type: application/json" -X POST -d @/tmp/$SESSION_ID/$CASE.json $WEBHOOK_URL
+    rm -rf /tmp/$SESSION_ID
+else
+
+    if [ ! -z "$MESSAGE" ];
+    then
+        MESSAGE="A snippet from the log:\n\`\`\`\n$MESSAGE\n\`\`\`"
+    else
+        MESSAGE="Check worker log for more info."
+    fi
+
+    CASTER=$(db_get_caster_with_stream_id $STREAM_ID)
+    CHANNEL=$(db_get_channel_with_stream_id $STREAM_ID)
+    GAME=$(db_get_game_with_stream_id $STREAM_ID)
+    END_TIME=$(db_get_stream_end_time $STREAM_ID)
+    SHUTDOWN_TIME=$(db_get_stream_shut_down_time $STREAM_ID "30")
+    PORT=$(db_get_channel_port $CHANNEL)
+    DISCORD_ID=$(db_get_caster_discord_id $CASTER)
+    SERVER_URL="rtmp://$FQDN:$PORT/$CASTER/"
+
+    if [ "$GAME" = "pubg" ];
+    then
+        WEBHOOK_URL=$DISCORD_WEBHOOK_PUBG
+    fi
+
+    mkdir /tmp/$SESSION_ID
+    cp $SOURCE_DIR/discord/templates/$CASE.json.template /tmp/$SESSION_ID/$CASE.json.template
+
+    export END_TIME="$END_TIME"
+    export SHUTDOWN_TIME="$SHUTDOWN_TIME"
+    export CASTER="$CASTER"
+    export DISCORD_ID="$DISCORD_ID"
+    export SERVER_URL="$SERVER_URL"
+    export MESSAGE="$MESSAGE"
+
+    envsubst < /tmp/$SESSION_ID/$CASE.json.template > /tmp/$SESSION_ID/$CASE.json
+
+    curl -H "Content-Type: application/json" -X POST -d @/tmp/$SESSION_ID/$CASE.json $WEBHOOK_URL
+
+    rm -rf /tmp/$SESSION_ID
+fi

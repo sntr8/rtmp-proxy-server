@@ -1,0 +1,6 @@
+/var/log/cron_worker.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+}

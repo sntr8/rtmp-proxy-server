@@ -1,0 +1,169 @@
+#!/bin/bash
+
+source /etc/profile
+
+OPERATION=$1
+
+if [ -z "$OPERATION" ];
+then
+    echo "$(basename "$0"): try '$(basename "$0") --help' for more information"
+    exit 1
+fi
+
+CONTAINER_ID=$(docker ps -aqf "name=mysql")
+
+case $OPERATION in
+    "--add")
+        NICK=$2
+        DISCORD_ID=$3
+        STREAM_KEY=$4
+
+        if [ -z "$NICK" ];
+        then
+            echo "[ERROR]: Caster name is not present. Try '$(basename "$0") --help' for more information"
+            exit 1
+        fi
+
+        if [ -z "$DISCORD_ID" ];
+        then
+            echo "[ERROR]: Discord ID is not present. Try '$(basename "$0") --help' for more information"
+            exit 1
+        fi
+
+        if [ -z "$STREAM_KEY" ];
+        then
+            STREAM_KEY=$NICK-$(hexdump -n 8 -e '4/4 "%08X" 1 "\n"' /dev/urandom |awk '{print tolower($0)}' |xargs)
+            echo "Stream key for the user is: $STREAM_KEY"
+        fi
+
+        echo "$MYSQL_USER"
+
+        docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO casters (nick, stream_key, discord_id, active, internal, date_added) VALUES ('$NICK', '$STREAM_KEY', '$DISCORD_ID', false, false, NOW())"
+    ;;
+    "--activate")
+        NICK=$2
+
+        if [ -z "$NICK" ];
+        then
+            echo "[ERROR]: Caster name is not present. Try '$(basename "$0") --help' for more information"
+            exit 1
+        fi
+
+        docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE casters SET active = true WHERE nick = \"$NICK\" AND internal = false"
+    ;;
+    "--disable")
+        NICK=$2
+
+        if [ -z "$NICK" ];
+        then
+            echo "[ERROR]: Caster name is not present. Try '$(basename "$0") --help' for more information"
+            exit 1
+        fi
+
+        docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE casters SET active = false WHERE nick = \"$NICK\" AND internal = false"
+    ;;
+    "--list")
+        OPTION=$2
+
+        if [ -z "$OPTION" ];
+        then
+            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT nick, stream_key, CASE WHEN active = false THEN 'disabled' ELSE 'active' END as active, date_added FROM casters WHERE internal = false ORDER BY nick"
+            exit 0
+        fi
+
+        case $OPTION in
+            "--ids")
+                docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT id, nick FROM casters WHERE internal = false ORDER BY id"
+                exit 0
+            ;;
+            "--nicks")
+                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT nick FROM casters WHERE internal = false ORDER BY nick"
+                exit 0
+            ;;
+            *)
+                OUTPUT=$(docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT nick, stream_key, CASE WHEN active = false THEN 'disabled' ELSE 'active' END as active, date_added FROM casters WHERE nick = '$OPTION' AND internal = false")
+
+                if [[ ! -z "$OUTPUT" ]];
+                then
+                    echo "$OUTPUT"
+                    exit 0
+                else
+                    echo "[ERROR]: Caster $NICK not found from the database."
+                    exit 1
+                fi
+            ;;
+        esac
+    ;;
+    "--remove")
+        NICK=$2
+
+        if [ -z "$NICK" ];
+        then
+            echo "[ERROR]: Caster name is not present. Try '$(basename "$0") --help' for more information"
+            exit 1
+        fi
+
+        read -r -p "Are you sure you want to remove $NICK? [y/N] " response
+        case "$response" in
+            [yY][eE][sS]|[yY])
+                docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "DELETE FROM casters WHERE nick = \"$NICK\" AND internal = false"
+                ;;
+            *)
+                exit 0
+                ;;
+        esac
+    ;;
+    "--help")
+        echo "$(basename "$0") -- Script to add, remove or modify casters in the MySQL database.
+
+    Usage: $(basename $0) <operation>
+
+    Allowed operations: --add, --activate, --disable, --list, --remove
+
+    --add
+        Used for adding a new caster to the database
+
+        Usage: $(basename $0) --add <caster> <discord_id> <stream key>
+
+        Parameters:
+            - caster: A nickname of the caster
+            - discord_id: A Discord ID for the caster. This is not Discord tag
+              (foo#1234) but a Long. This can be found by activating Developer
+              mode for Discord, right clicking the user and selecting \"Copy ID\"
+            - stream key: An existing stream key for the caster. The stream key
+              will be generated if it's not provided by the executor.
+    --activate
+        Used for activating casters so they can authenticate to the RTMP service.
+
+        Usage: $(basename $0) --activate <caster>
+
+        Parameters:
+            - caster: A nickname of the caster
+    --disable
+        Used for disabling casters so they can't authenticate to the RTMP service.
+
+        Usage: $(basename $0) --disable <caster>
+
+        Parameters:
+            - caster: A nickname of the caster
+    --list
+        Used for displaying data of (a) caster(s) in the system. Leaving <caster>
+        empty will result displaying of all the casters in the system.
+
+        Usage: $(basename $0) --list
+        Usage: $(basename $0) --list <caster>
+
+        Parameters:
+            - caster: A nickname of the caster
+    --remove
+        Used for removing a caster to the database
+
+        Usage: $(basename $0) --remove <caster>
+
+        Parameters:
+            - caster: A nickname of the caster
+    "
+    ;;
+    *)
+        echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+esac

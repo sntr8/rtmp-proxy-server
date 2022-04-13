@@ -1,0 +1,134 @@
+#!/bin/bash
+SOURCE_DIR="$(dirname "$0")"
+
+source $SOURCE_DIR/functions/functions.sh
+source /etc/profile
+
+add_lock() {
+    HAPROXY_CFG_DIR=$1
+    if [ -f $HAPROXY_CFG_DIR/.haproxy.cfg.lck ];
+    then
+        echo "An other process is editing haproxy.cfg. Can't edit the file."
+        exit 2
+    else
+        touch $HAPROXY_CFG_DIR/.haproxy.cfg.lck
+    fi
+}
+
+reload_haproxy() {
+    CONTAINER_ID=$(docker ps -aqf "name=haproxy")
+    docker kill -s HUP $CONTAINER_ID
+    echo "HAproxy reloaded"
+}
+
+remove_lock() {
+    rm $HAPROXY_CFG_DIR/.haproxy.cfg.lck
+}
+
+OPERATION=$1
+HAPROXY_CFG_DIR=/opt/haproxy/
+SESSION_ID=$(od -x /dev/urandom | head -1 | awk '{OFS="-"; print $2$3,$4,$5,$6,$7$8$9}')
+
+case $OPERATION in
+    "--add")
+        CASTER=$2
+        CHANNEL=$3
+
+        if [ -z $CASTER ];
+        then
+            echo "[ERROR]: Caster is missing. Try '$(basename "$0") --help' for more information"
+            exit 1
+        fi
+
+        if [ -z $CHANNEL ];
+        then
+            echo "[ERROR]: Channel is missing. Try '$(basename "$0") --help' for more information"
+            exit 1
+        fi
+
+        PORT=$(db_get_channel_port $CHANNEL)
+
+
+        add_lock $HAPROXY_CFG_DIR
+
+        mkdir -p /tmp/$SESSION_ID/
+        cd /tmp/$SESSION_ID/
+        GIT_OPTS=""
+        if [ ! -z "$CONFIG_BRANCH" ];
+        then
+            GIT_OPTS="-b $CONFIG_BRANCH"
+        fi
+        git clone $GIT_OPTS https://$GIT_USER:$GIT_TOKEN@gitlab.com/kanaliiga/stream-rtmp.git .
+        if [ -f "haproxy/config/haproxy-rtmp.cfg" ];
+        then
+            sed -i "s/<CHANNEL>/$CHANNEL/g" haproxy/config/haproxy-rtmp.cfg
+            sed -i "s/<CASTER>/$CASTER/g" haproxy/config/haproxy-rtmp.cfg
+            sed -i "s/<PORT>/$PORT/g" haproxy/config/haproxy-rtmp.cfg
+
+            echo "# ::$CASTER::start" >> $HAPROXY_CFG_DIR/haproxy.cfg
+            cat haproxy/config/haproxy-rtmp.cfg >> $HAPROXY_CFG_DIR/haproxy.cfg
+            echo "# ::$CASTER::end" >> $HAPROXY_CFG_DIR/haproxy.cfg
+
+            remove_lock $HAPROXY_CFG_DIR
+
+            reload_haproxy
+        else
+            remove_lock $HAPROXY_CFG_DIR
+            echo "Git clone failed. Can't configure HAproxy."
+            exit 1
+        fi
+        rm -rf /tmp/$SESSION_ID/
+
+    ;;
+    "--remove")
+        CASTER=$2
+
+        if [ -z $CASTER ];
+        then
+            echo "[ERROR]: Caster is missing. Try '$(basename "$0") --help' for more information"
+            exit 1
+        fi
+
+        add_lock $HAPROXY_CFG_DIR
+
+        md5old=$(md5sum $HAPROXY_CFG_DIR/haproxy.cfg)
+
+        sed -i "/^# ::$CASTER::start$/,/^# ::$CASTER::end$/d" $HAPROXY_CFG_DIR/haproxy.cfg
+
+        md5new=$(md5sum $HAPROXY_CFG_DIR/haproxy.cfg)
+
+        if [ "$md5old" != "$md5new" ];
+        then
+            reload_haproxy
+        else
+            echo "No changes were made to haproxy.cfg as there was nothing to remove."
+        fi
+
+        remove_lock $HAPROXY_CFG_DIR
+
+    ;;
+    "--help")
+        echo "$(basename "$0") -- Script to add or remove RTMP container routing to/from HAproxy config
+
+    Usage: $(basename "$0") <operation>
+
+    Allowed operations: --add, --remove
+
+    --add
+        Used for adding a new RTMP container routing
+
+        Usage: $(basename "$0") --add <caster> <channel>
+
+        Parameters:
+            - caster: The nickname of the caster operating OBS or similar streaming software
+            - channel: The name of the channel for which the stream will be sent to
+    --remove
+        Used for removing an existing RTMP container routing
+
+        Usage: $(basename "$0") --remove <caster>
+
+        Parameters:
+            - caster: The nickname of the caster operating OBS or similar streaming software
+    "
+    ;;
+esac

@@ -1,0 +1,391 @@
+#!/bin/bash
+SOURCE_DIR="$(dirname "$0")"
+
+source $SOURCE_DIR/functions/functions.sh
+source /etc/profile
+
+check_stream_container_lock() {
+    if [[ $(find /var/lock/ -maxdepth 1 -name "nginx-rtmp-*.lock") ]];
+    then
+        return 1
+    else
+        return 0
+    fi
+}
+
+check_running() {
+    RUNNING_CONTAINER=$1
+    OLD=$(docker ps -aqf "name=$RUNNING_CONTAINER")
+    if [ ! -z $OLD ];
+    then
+        return 1
+    fi
+}
+
+pull_container() {
+    PULLED_IMAGE_VERSION="$(echo "$1" | tr '-' '_' | tr '[:lower:]' '[:upper:]')""_VERSION"
+    echo "Pulling image $1 version ${!PULLED_IMAGE_VERSION}"
+    if ! docker pull registry.gitlab.com/kanaliiga/stream-rtmp/"$1:${!PULLED_IMAGE_VERSION}";
+    then
+        exit 1
+    fi
+}
+
+run_container() {
+    CONTAINER=$1
+
+    NETWORK=$(docker network ls |grep stream)
+    if [ -z "$NETWORK" ];
+    then
+        docker network create -d bridge stream
+    fi
+
+    case $CONTAINER in
+        "haproxy")
+            if ! check_running "$CONTAINER";
+            then
+                echo "A $CONTAINER container is already running. If you need to restart use --restart instead."
+                exit 1
+            fi
+
+            pull_container "$CONTAINER"
+
+            if [ -f /opt/haproxy/haproxy.cfg ];
+            then
+                rm /opt/haproxy/haproxy.cfg
+            fi
+
+            SESSION_ID=$(od -x /dev/urandom | head -1 | awk '{OFS="-"; print $2$3,$4,$5,$6,$7$8$9}')
+            mkdir -p /tmp/"$SESSION_ID"/
+            GIT_OPTS=""
+            if [ ! -z "$CONFIG_BRANCH" ];
+            then
+                GIT_OPTS="-b $CONFIG_BRANCH"
+            fi
+            git clone $GIT_OPTS https://$GIT_USER:$GIT_TOKEN@gitlab.com/kanaliiga/stream-rtmp.git /tmp/"$SESSION_ID"/
+            if [ -f "/tmp/"$SESSION_ID"/haproxy/config/haproxy.cfg" ];
+            then
+                cp /tmp/"$SESSION_ID"/haproxy/config/haproxy.cfg /opt/haproxy/haproxy.cfg
+                rm -rf /tmp/"$SESSION_ID"
+
+                docker run --rm --net stream --name haproxy -d \
+                    -e FQDN="$FQDN" \
+                    -e ADMIN_EMAIL="$ADMIN_EMAIL" \
+                    -v /opt/haproxy/:/usr/local/etc/haproxy/ \
+                    -v /opt/letsencrypt/:/etc/letsencrypt/ \
+                    -p 80:80 \
+                    -p 443:443 \
+                    -p 8084:8084 \
+                    -p 48001:48001 \
+                    -p 48002:48002 \
+                    -p 48003:48003 \
+                    -p 48004:48004 \
+                    -p 48005:48005 \
+                    -p 48006:48006 \
+                    --sysctl net.ipv4.ip_unprivileged_port_start=0 \
+                    registry.gitlab.com/kanaliiga/stream-rtmp/haproxy:$HAPROXY_VERSION
+            else
+                echo "Git clone failed"
+                exit 1
+            fi
+        ;;
+        "mysql")
+            if ! check_running "$CONTAINER";
+            then
+                echo "A $CONTAINER container is already running. If you need to restart use --restart instead."
+                exit 1
+            fi
+
+            pull_container "$CONTAINER"
+
+            ID=$(docker run --rm --net stream --name mysql -d -v /opt/mysql/data/:/var/lib/mysql -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD" -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -e MYSQL_DATABASE="$MYSQL_DATABASE" registry.gitlab.com/kanaliiga/stream-rtmp/mysql:$MYSQL_VERSION)
+            docker exec -it "$ID" /bin/sh -c 'envsubst < /creds.cnf.template > /creds.cnf'
+        ;;
+        "nginx-http")
+            if ! check_running "$CONTAINER";
+            then
+                echo "A $CONTAINER container is already running. If you need to restart use --restart instead."
+                exit 1
+            fi
+
+            pull_container "$CONTAINER"
+
+            docker run --rm --net stream --name nginx-http -d --add-host=host.docker.internal:host-gateway -e TOURNAMENT_BANNER="$TOURNAMENT_BANNER" registry.gitlab.com/kanaliiga/stream-rtmp/nginx-http:$NGINX_HTTP_VERSION
+        ;;
+        "nginx-rtmp")
+            if check_running "mysql";
+            then
+                echo "A mysql container is not running. If you need to restart use --restart instead."
+                exit 1
+            fi
+
+            CASTER=$2
+            CHANNEL=$3
+            GAME=$4
+            STREAM_DELAY=0
+
+            if [ -z "$CASTER" ];
+            then
+                echo "Caster is not provided. Try '$(basename "$0") --help' for more information"
+                exit 1
+            fi
+
+            if ! search_caster "$CASTER";
+            then
+                exit 1
+            fi
+
+            if ! check_running "$CONTAINER-$CASTER";
+            then
+                echo "A $CONTAINER-$CASTER container is already running. If you need to restart, use --restart instead."
+                exit 1
+            fi
+
+            if [ -z "$CHANNEL" ];
+            then
+                echo "Channel is not provided. Try '$(basename "$0") --help' for more information"
+                exit 1
+            fi
+
+            if ! search_channel "$CHANNEL";
+            then
+                exit 1
+            fi
+
+            if [[ "$CHANNEL" != proxy-only* ]];
+            then
+                if [ -z "$GAME" ];
+                then
+                    echo "Game is not provided. Try '$(basename "$0") --help' for more information"
+                    exit 1
+                fi
+
+                if ! search_game "$GAME";
+                then
+                    exit 1
+                fi
+
+                MYSQL_CONTAINER_ID=$(docker ps -aqf "name=mysql")
+                TWITCH_STREAM_KEY=$(twitch_get_stream_key $CHANNEL)
+
+                if [ $? -ne 0 ];
+                then
+                    echo "ERROR: Fetching Twitch stream key failed. $TWITCH_STREAM_KEY"
+                    exit 1
+                fi
+
+                STREAM_DELAY=$(docker exec "$MYSQL_CONTAINER_ID" mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT delay FROM games WHERE name = '$GAME'")
+                STREAM_DELAY=${STREAM_DELAY%$'\r'}
+            fi
+
+            if [ $STREAM_DELAY -eq 0 ] && [[ "$CHANNEL" != proxy-only* ]];
+            then
+                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" registry.gitlab.com/kanaliiga/stream-rtmp/nginx-rtmp-proxy:$NGINX_RTMP_PROXY_VERSION
+            elif [[ "$CHANNEL" == proxy-only* ]];
+            then
+                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e PROXY_ONLY=true registry.gitlab.com/kanaliiga/stream-rtmp/nginx-rtmp-proxy:$NGINX_RTMP_PROXY_VERSION
+            else
+                INTERNAL_STREAM_KEY=$(docker exec "$MYSQL_CONTAINER_ID" mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT stream_key FROM casters WHERE nick = 'internal_technical_user'")
+                INTERNAL_STREAM_KEY=${INTERNAL_STREAM_KEY%$'\r'}
+
+                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e INTERNAL_STREAM_KEY="$INTERNAL_STREAM_KEY" -e STREAM_DELAY="$STREAM_DELAY" registry.gitlab.com/kanaliiga/stream-rtmp/nginx-rtmp-delayer:$NGINX_RTMP_DELAYER_VERSION
+            fi
+
+            STARTUP_RESULT=$?
+
+            if [ "$STARTUP_RESULT" -eq 1 ];
+            then
+                echo "[ERROR]: Container startup failed"
+                exit 1
+            fi
+
+            touch /var/lock/"$CONTAINER-$CASTER".lock
+
+            haproxy_configmod --add "$CASTER" "$CHANNEL"
+
+            castermod --activate "$CASTER"
+        ;;
+        "php-fpm")
+            if ! check_running "$CONTAINER";
+            then
+                echo "A $CONTAINER container is already running. If you need to restart use --restart instead."
+                exit 1
+            fi
+
+            pull_container "$CONTAINER"
+
+            docker run --rm --net stream --name php-fpm -d -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -e MYSQL_DATABASE="$MYSQL_DATABASE" registry.gitlab.com/kanaliiga/stream-rtmp/php-fpm:$PHP_FPM_VERSION
+        ;;
+    esac
+}
+
+
+stop_container() {
+    CONTAINER=$1
+    case $CONTAINER in
+        "nginx-rtmp")
+            CASTER=$2
+
+            if [ -z "$CASTER" ];
+            then
+                echo "Caster is not provided. Try '$(basename "$0") --help' for more information"
+                exit 1
+            fi
+
+            docker stop "$CONTAINER-$CASTER"
+            rm /var/lock/"$CONTAINER-$CASTER".lock
+            haproxy_configmod --remove "$CASTER"
+            castermod --disable "$CASTER"
+        ;;
+        "nginx-http"|"php-fpm")
+            if check_stream_container_lock;
+            then
+                docker stop "$CONTAINER"
+            else
+                echo "A stream container is running. Can't stop $CONTAINER at this time"
+            fi
+        ;;
+        *)
+            docker stop "$CONTAINER"
+        ;;
+    esac
+}
+
+OPERATION=$1
+
+if [ -z "$OPERATION" ];
+then
+    echo "$(basename "$0"): try '$(basename "$0") --help' for more information"
+    exit 1
+fi
+
+CONTAINER_ID=$(docker ps -aqf "name=mysql")
+
+case $OPERATION in
+    "--start")
+        CONTAINER=$2
+        case $CONTAINER in
+            "--all")
+                run_container "mysql"
+                run_container "php-fpm"
+                run_container "nginx-http"
+                run_container "haproxy"
+            ;;
+            "haproxy")
+                run_container "$CONTAINER"
+            ;;
+            "mysql")
+                run_container "$CONTAINER"
+            ;;
+            "nginx-http")
+                run_container "$CONTAINER"
+            ;;
+            "nginx-rtmp")
+                run_container "$CONTAINER" "$3" "$4" "$5"
+            ;;
+            "php-fpm")
+                run_container "$CONTAINER"
+            ;;
+            *)
+                echo "Container $CONTAINER not recognized. Try '$(basename "$0") --help' for more information"
+            ;;
+        esac
+
+    ;;
+    "--stop")
+        CONTAINER=$2
+        case $CONTAINER in
+            "--all")
+                stop_container "mysql"
+                stop_container "php-fpm"
+                stop_container "nginx-http"
+                stop_container "haproxy"
+            ;;
+            "haproxy")
+                stop_container "$CONTAINER"
+            ;;
+            "mysql")
+                stop_container "$CONTAINER"
+            ;;
+            "nginx-http")
+                stop_container "$CONTAINER"
+            ;;
+            "nginx-rtmp")
+                stop_container "$CONTAINER" "$3"
+            ;;
+            "php-fpm")
+                stop_container "$CONTAINER"
+            ;;
+            *)
+                echo "Container $CONTAINER not recognized. Try '$(basename "$0") --help' for more information"
+            ;;
+        esac
+
+    ;;
+    "--restart")
+        CONTAINER=$2
+        case $CONTAINER in
+            "--all")
+                containermod --stop --all
+                containermod --start --all
+            ;;
+            "haproxy")
+                containermod --stop "$CONTAINER"
+                containermod --start "$CONTAINER"
+            ;;
+            "mysql")
+                containermod --stop "$CONTAINER"
+                containermod --start "$CONTAINER"
+            ;;
+            "nginx-http")
+                containermod --stop "$CONTAINER"
+                containermod --start "$CONTAINER"
+            ;;
+            "nginx-rtmp")
+                containermod --stop "$CONTAINER" "$CASTER"
+                containermod --start "$CONTAINER" "$CASTER" "$CHANNEL" "$GAME"
+            ;;
+            "php-fpm")
+                containermod --stop "$CONTAINER"
+                containermod --start "$CONTAINER"
+            ;;
+            *)
+                echo "Container $CONTAINER not recognized. Try '$(basename "$0") --help' for more information"
+            ;;
+        esac
+    ;;
+    "--list")
+        docker ps --all
+    ;;
+    "--help")
+        echo "$(basename "$0") -- Script to start or stop RTMP containers.
+
+    Usage: $(basename "$0") <operation>
+
+    Allowed operations: --add, --modify, --remove, --list
+    --start
+        Used for starting a new channel container
+
+        Usage: $(basename "$0") --start <channel> <caster>
+
+        Parameters:
+            - channel: The name of the channel for which the stream will be sent to
+            - caster: The nickname of the caster operating OBS or similar streaming software
+    --stop
+        Used for stopping a channel container
+
+        Usage: $(basename "$0") --stop <channel>
+
+        Parameters:
+            - channel: The name of the channel for which the stream was be sent to
+    --list
+        Used for listing available channels. Will list all channels present in the database.
+
+        Usage: $(basename "$0") --list
+    "
+
+    ;;
+    *)
+        echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+    ;;
+esac

@@ -1,0 +1,95 @@
+#!/bin/bash
+
+source /etc/profile
+
+OPERATION=$1
+
+if [ -z "$OPERATION" ];
+then
+    echo "$(basename "$0"): try '$(basename "$0") --help' for more information"
+    exit 1
+fi
+
+CONTAINER_ID=$(docker ps -aqf "name=mysql")
+
+case $OPERATION in
+    "--add")
+        read -r -p "What's the technical name of the game? (eg. pubg, csgo)" NAME
+        read -r -p "What's the display name of the game? (eg. Playerunknow's Battlegrounds)" DISPLAYNAME
+        read -r -p "What's the abbreviation of the game? (eg. PUBG, CS:GO)" ABBR
+        read -r -p "What's the delay of streams for the game in seconds?" DELAY
+
+        echo "Creating a new game with details
+        Technical name: $NAME
+        Display name: $DISPLAYNAME
+        Abbreviation: $ABBR
+        Delay: $DELAY
+        "
+
+        read -r -p "Are you sure you want to create a new game with above details? [y/N] " RESPONSE
+        case "$RESPONSE" in
+            [yY][eE][sS]|[yY])
+                docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO games (name, display_name, abbreviation, delay) VALUES ('$NAME', '$DISPLAYNAME', '$ABBR', $DELAY)"
+                ;;
+            *)
+                exit 0
+                ;;
+        esac
+    ;;
+    "--list")
+        OPTION=$2
+
+        if [ -z "$OPTION" ];
+        then
+            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT name, delay FROM games ORDER BY name"
+            exit 0
+        fi
+
+        case $OPTION in
+            "--ids")
+                docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT id, name FROM games ORDER BY id"
+                exit 0
+            ;;
+            "--names")
+                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT name FROM games ORDER BY name"
+                exit 0
+            ;;
+            *)
+                OUTPUT=$(docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT name FROM games WHERE name = '$OPTION'")
+
+                if [[ ! -z $OUTPUT ]];
+                then
+                    echo "$OUTPUT"
+                    exit 0
+                else
+                    echo "[ERROR]: Game $OPTION not found from the database."
+                    exit 1
+                fi
+            ;;
+        esac
+    ;;
+    "--help")
+        echo "$(basename "$0") -- Script to add or list games in the MySQL database.
+
+    Usage: $(basename $0) <operation>
+
+    Allowed operations: --add, --modify, --list, --remove
+
+    --add
+        Used for adding a new game to the database. The program will ask interactively the data for the game.
+
+        Usage: $(basename $0) --add
+
+    --list
+        Used for displaying data of games in the system. Leaving game empty will result displaying of all the games in the system.
+
+        Usage: $(basename $0) --list
+        Usage: $(basename $0) --list <game>
+
+        Parameters:
+            - game: A technical name of the game
+    "
+    ;;
+    *)
+        echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+esac

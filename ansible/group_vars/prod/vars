@@ -1,0 +1,19 @@
+fqdn: stream.kanaliiga.fi
+mysql_user: mysql
+mysql_password: "{{ vault_mysql_password }}"
+mysql_root_password: "{{ vault_mysql_root_password }}"
+mysql_database: stream
+git_user: stream
+git_token: "{{ vault_git_token }}"
+image_version: v1.5
+config_branch: master
+discord_webhook_pubg: "{{ vault_discord_webhook_pubg }}"
+discord_webhook_others: "{{ vault_discord_webhook_others }}"
+
+image_versions:
+  HAPROXY_VERSION: "$IMAGE_VERSION"
+  MYSQL_VERSION: "$IMAGE_VERSION"
+  NGINX_HTTP_VERSION: "$IMAGE_VERSION"
+  NGINX_RTMP_DELAYER_VERSION: "v1.4.2"
+  NGINX_RTMP_PROXY_VERSION: "v1.4.2"
+  PHP_FPM_VERSION: "$IMAGE_VERSION"

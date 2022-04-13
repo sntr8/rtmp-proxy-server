@@ -1,0 +1,13 @@
+{
+    "avatar_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png",
+    "username": "RTMP Server",
+    "embeds": [{
+        "author": {
+          "name": "nginx-rtmp-$CASTER",
+          "icon_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png"
+        },
+        "description": "Your stream container has been started.\n\nServer url: $SERVER_URL\n\nScheduled end time: $END_TIME",
+        "color": "3394560"
+    }],
+    "content":"<@$DISCORD_ID>"
+}
