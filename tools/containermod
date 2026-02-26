@@ -4,6 +4,37 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+usage() {
+  echo "$(basename "$0") -- Tool to manage RTMP-proxy containers.
+
+Usage:
+$(basename "$0") <optstring> <parameter>
+
+Examples:
+Restart all containers:
+$(basename "$0") -ra
+
+Start a game container
+$(basename "$0") -s -n nginx-rtmp -C <caster> -c <channel> -g <game>
+
+Stop a proxy container
+$(basename "$0") -Sp -n nginx-rtmp -C <caster>
+
+Options
+-a, -all                        used together with -r, -s, -S, mutually exclusive with -n
+-C, --caster <caster name>      the name of the caster
+-c, --channel <channel name>    the name of the channel
+-g, --game <game name>          the name of the game
+-h, --help                      display this help
+-l, --list                      list running containers
+-n, --name <container name>     the name of the container: rtmp-nginx, mysql, php-fpm, nginx-http and haproxy. Mutually exclusive with -a
+-p, --proxy                     handle the container as proxy
+-r, --restart                   restart a container, requires either -n or -a
+-s, --start                     start a container, requires either -n or -a and -Ccg
+-S, --stop                      stop a container, requires either -n or -a and -C, might need -p
+"
+}
+
 check_stream_container_lock() {
     if [[ $(find /var/lock/ -maxdepth 1 -name "nginx-rtmp-*.lock") ]];
     then
@@ -32,7 +63,10 @@ pull_container() {
 }
 
 run_container() {
-    CONTAINER=$1
+    if [ ! -z "$1" ];
+    then
+        CONTAINER="$1"
+    fi
 
     NETWORK=$(docker network ls |grep stream)
     if [ -z "$NETWORK" ];
@@ -69,21 +103,17 @@ run_container() {
                 rm -rf /tmp/"$SESSION_ID"
 
                 docker run --rm --net stream --name haproxy -d \
-                    -e FQDN="$FQDN" \
-                    -e ADMIN_EMAIL="$ADMIN_EMAIL" \
-                    -v /opt/haproxy/:/usr/local/etc/haproxy/ \
-                    -v /opt/letsencrypt/:/etc/letsencrypt/ \
-                    -p 80:80 \
-                    -p 443:443 \
-                    -p 8084:8084 \
-                    -p 48001:48001 \
-                    -p 48002:48002 \
-                    -p 48003:48003 \
-                    -p 48004:48004 \
-                    -p 48005:48005 \
-                    -p 48006:48006 \
-                    --sysctl net.ipv4.ip_unprivileged_port_start=0 \
-                    registry.gitlab.com/kanaliiga/stream-rtmp/haproxy:$HAPROXY_VERSION
+                -e FQDN="$FQDN" \
+                -e ADMIN_EMAIL="$ADMIN_EMAIL" \
+                -v /opt/haproxy/:/usr/local/etc/haproxy/ \
+                -v /opt/letsencrypt/:/etc/letsencrypt/ \
+                -p 80:80 \
+                -p 443:443 \
+                -p 8084:8084 \
+                -p 48001-48010:48001-48010 \
+                -p 48101-48110:48101-48110 \
+                --sysctl net.ipv4.ip_unprivileged_port_start=0 \
+                registry.gitlab.com/kanaliiga/stream-rtmp/haproxy:$HAPROXY_VERSION
             else
                 echo "Git clone failed"
                 exit 1
@@ -110,7 +140,7 @@ run_container() {
 
             pull_container "$CONTAINER"
 
-            docker run --rm --net stream --name nginx-http -d --add-host=host.docker.internal:host-gateway -e TOURNAMENT_BANNER="$TOURNAMENT_BANNER" registry.gitlab.com/kanaliiga/stream-rtmp/nginx-http:$NGINX_HTTP_VERSION
+            docker run --rm --net stream --name nginx-http -d --add-host=host.docker.internal:host-gateway registry.gitlab.com/kanaliiga/stream-rtmp/nginx-http:$NGINX_HTTP_VERSION
         ;;
         "nginx-rtmp")
             if check_running "mysql";
@@ -119,31 +149,23 @@ run_container() {
                 exit 1
             fi
 
-            CASTER=$2
-            CHANNEL=$3
-            GAME=$4
             STREAM_DELAY=0
-
-            if [ -z "$CASTER" ];
-            then
-                echo "Caster is not provided. Try '$(basename "$0") --help' for more information"
-                exit 1
-            fi
 
             if ! search_caster "$CASTER";
             then
                 exit 1
             fi
 
-            if ! check_running "$CONTAINER-$CASTER";
+            if $PROXY;
             then
-                echo "A $CONTAINER-$CASTER container is already running. If you need to restart, use --restart instead."
-                exit 1
+                CONTAINER_NAME="$CONTAINER-proxy-$CASTER"
+            else
+                CONTAINER_NAME="$CONTAINER-$CASTER"
             fi
 
-            if [ -z "$CHANNEL" ];
+            if ! check_running "$CONTAINER_NAME";
             then
-                echo "Channel is not provided. Try '$(basename "$0") --help' for more information"
+                echo "A $CONTAINER_NAME container is already running. If you need to restart, use --restart instead."
                 exit 1
             fi
 
@@ -152,7 +174,7 @@ run_container() {
                 exit 1
             fi
 
-            if [[ "$CHANNEL" != proxy-only* ]];
+            if ! $PROXY;
             then
                 if [ -z "$GAME" ];
                 then
@@ -166,29 +188,35 @@ run_container() {
                 fi
 
                 MYSQL_CONTAINER_ID=$(docker ps -aqf "name=mysql")
-                TWITCH_STREAM_KEY=$(twitch_get_stream_key $CHANNEL)
-
-                if [ $? -ne 0 ];
+                if [ -z $PREDFINED_STREAM_KEY ];
                 then
-                    echo "ERROR: Fetching Twitch stream key failed. $TWITCH_STREAM_KEY"
-                    exit 1
+                    echo "Fetching stream key from the Twitch API"
+                    if ! TWITCH_STREAM_KEY=$(twitch_get_stream_key $CHANNEL);
+                    then
+                        echo "ERROR: Fetching Twitch stream key failed."
+                        twitch_get_api_error $CHANNEL
+                        exit 1
+                    fi
+                else
+                    echo "Using the predefined stream key"
+                    TWITCH_STREAM_KEY="$PREDFINED_STREAM_KEY"
                 fi
 
                 STREAM_DELAY=$(docker exec "$MYSQL_CONTAINER_ID" mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT delay FROM games WHERE name = '$GAME'")
                 STREAM_DELAY=${STREAM_DELAY%$'\r'}
             fi
 
-            if [ $STREAM_DELAY -eq 0 ] && [[ "$CHANNEL" != proxy-only* ]];
+            if [ $STREAM_DELAY -eq 0 ] && ! $PROXY;
             then
-                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" registry.gitlab.com/kanaliiga/stream-rtmp/nginx-rtmp-proxy:$NGINX_RTMP_PROXY_VERSION
-            elif [[ "$CHANNEL" == proxy-only* ]];
+                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e GAME="$GAME" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e STREAM_DELAY="0" -e PROXY_ONLY=false registry.gitlab.com/kanaliiga/stream-rtmp/nginx-rtmp:$NGINX_RTMP_VERSION
+            elif $PROXY;
             then
-                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e PROXY_ONLY=true registry.gitlab.com/kanaliiga/stream-rtmp/nginx-rtmp-proxy:$NGINX_RTMP_PROXY_VERSION
+                docker run --rm --net stream --name nginx-rtmp-proxy-"$CASTER" -d -e CASTER="$CASTER" -e STREAM_DELAY="0" -e PROXY_ONLY=true registry.gitlab.com/kanaliiga/stream-rtmp/nginx-rtmp:$NGINX_RTMP_VERSION
             else
                 INTERNAL_STREAM_KEY=$(docker exec "$MYSQL_CONTAINER_ID" mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT stream_key FROM casters WHERE nick = 'internal_technical_user'")
                 INTERNAL_STREAM_KEY=${INTERNAL_STREAM_KEY%$'\r'}
 
-                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e INTERNAL_STREAM_KEY="$INTERNAL_STREAM_KEY" -e STREAM_DELAY="$STREAM_DELAY" registry.gitlab.com/kanaliiga/stream-rtmp/nginx-rtmp-delayer:$NGINX_RTMP_DELAYER_VERSION
+                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e GAME="$GAME" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e INTERNAL_STREAM_KEY="$INTERNAL_STREAM_KEY" -e STREAM_DELAY="$STREAM_DELAY" -e PROXY_ONLY=false registry.gitlab.com/kanaliiga/stream-rtmp/nginx-rtmp:$NGINX_RTMP_VERSION
             fi
 
             STARTUP_RESULT=$?
@@ -199,10 +227,13 @@ run_container() {
                 exit 1
             fi
 
-            touch /var/lock/"$CONTAINER-$CASTER".lock
-
-            haproxy_configmod --add "$CASTER" "$CHANNEL"
-
+            touch /var/lock/"$CONTAINER_NAME".lock
+            if $PROXY;
+            then
+                haproxy_configmod --add "proxy-$CASTER" "$CHANNEL"
+            else
+                haproxy_configmod --add "$CASTER" "$CHANNEL"
+            fi
             castermod --activate "$CASTER"
         ;;
         "php-fpm")
@@ -221,20 +252,23 @@ run_container() {
 
 
 stop_container() {
-    CONTAINER=$1
+    if [ ! -z "$1" ];
+    then
+        CONTAINER="$1"
+    fi
+
     case $CONTAINER in
         "nginx-rtmp")
-            CASTER=$2
-
-            if [ -z "$CASTER" ];
+            if $PROXY;
             then
-                echo "Caster is not provided. Try '$(basename "$0") --help' for more information"
-                exit 1
+                docker stop "$CONTAINER-proxy-$CASTER"
+                haproxy_configmod --remove "proxy-$CASTER"
+                rm /var/lock/"$CONTAINER-proxy-$CASTER".lock
+            else
+                docker stop "$CONTAINER-$CASTER"
+                haproxy_configmod --remove "$CASTER"
+                rm /var/lock/"$CONTAINER-$CASTER".lock
             fi
-
-            docker stop "$CONTAINER-$CASTER"
-            rm /var/lock/"$CONTAINER-$CASTER".lock
-            haproxy_configmod --remove "$CASTER"
             castermod --disable "$CASTER"
         ;;
         "nginx-http"|"php-fpm")
@@ -251,139 +285,223 @@ stop_container() {
     esac
 }
 
-OPERATION=$1
+ALL=false
+CASTER=""
+CHANNEL=""
+GAME=""
+NAME=""
+OPERATION=""
+PROXY=false
+
+PARSED_ARGUMENTS=$(getopt -a -n containermod -o aC:c:g:hk:ln:prsS --long all,caster:,channel:,game:,help,key:,list,name:,proxy,restart,start,stop -- "$@")
+VALID_ARGUMENTS=$?
+if [ "$VALID_ARGUMENTS" != "0" ]; then
+    usage
+    exit 1
+fi
+
+eval set -- "$PARSED_ARGUMENTS"
+while :
+do
+    case "$1" in
+        -h | --help)
+            usage
+            exit 0
+        ;;
+        -l | --list )
+            docker ps --all
+            exit 0
+        ;;
+        -a | --all)
+            ALL=true
+            shift
+        ;;
+        -C | --caster)
+            CASTER="$2"
+            shift 2
+        ;;
+        -c | --channel)
+            CHANNEL="$2"
+            shift 2
+        ;;
+        -g | --game)
+            GAME="$2"
+            shift 2
+        ;;
+        -n | --name)
+            CONTAINER="$2"
+            shift 2
+        ;;
+        -p | --proxy)
+            PROXY=true
+            shift
+        ;;
+        -r | --restart)
+            OPERATION="restart"
+            shift
+        ;;
+        -s | --start)
+            OPERATION="start"
+            shift
+        ;;
+        -S | --stop)
+            OPERATION="stop"
+            shift
+        ;;
+        -k | --key)
+            PREDFINED_STREAM_KEY="$2"
+            shift 2
+        ;;
+        --)
+            shift
+            break
+        ;;
+        *)
+            echo "Unexpected option: $1 - this should not happen."
+            usage
+            exit 1
+        ;;
+    esac
+done
+
+if [[ $ALL && ! -z $NAME ]];
+then
+    echo "ERROR: -a, --all and -n, --name can't be defined together. Try '$(basename "$0") --help' for more information"
+    exit 1
+fi
 
 if [ -z "$OPERATION" ];
 then
-    echo "$(basename "$0"): try '$(basename "$0") --help' for more information"
+    echo "ERROR: Operation was missing. Try '$(basename "$0") --help' for more information"
     exit 1
+fi
+
+if [ ! -z $CHANNEL ];
+then
+    if [[ "$CHANNEL" == *-proxy ]];
+    then
+        PROXY=true
+    fi
 fi
 
 CONTAINER_ID=$(docker ps -aqf "name=mysql")
 
 case $OPERATION in
-    "--start")
-        CONTAINER=$2
-        case $CONTAINER in
-            "--all")
-                run_container "mysql"
-                run_container "php-fpm"
-                run_container "nginx-http"
-                run_container "haproxy"
-            ;;
-            "haproxy")
-                run_container "$CONTAINER"
-            ;;
-            "mysql")
-                run_container "$CONTAINER"
-            ;;
-            "nginx-http")
-                run_container "$CONTAINER"
-            ;;
-            "nginx-rtmp")
-                run_container "$CONTAINER" "$3" "$4" "$5"
-            ;;
-            "php-fpm")
-                run_container "$CONTAINER"
-            ;;
-            *)
-                echo "Container $CONTAINER not recognized. Try '$(basename "$0") --help' for more information"
-            ;;
-        esac
-
+    "start")
+        if $ALL;
+        then
+            run_container "mysql"
+            run_container "php-fpm"
+            run_container "nginx-http"
+            run_container "haproxy"
+        else
+            if [ -z "$CONTAINER" ];
+            then
+                echo "ERROR: Container name is missing. Try '$(basename "$0") --help' for more information"
+                exit 1
+            fi
+            case $CONTAINER in
+                "haproxy")
+                    run_container
+                ;;
+                "mysql")
+                    run_container
+                ;;
+                "nginx-http")
+                    run_container
+                ;;
+                "nginx-rtmp")
+                    if [ -z "$CASTER" ];
+                    then
+                        echo "ERROR: Caster name is missing. Try '$(basename "$0") --help' for more information"
+                        exit 1
+                    fi
+                    if [ -z "$CHANNEL" ];
+                    then
+                        echo "ERROR: Channel name is missing. Try '$(basename "$0") --help' for more information"
+                        exit 1
+                    fi
+                    if [[ ! $PROXY && -z "$GAME" ]];
+                    then
+                        echo "ERROR: Game name is missing. Try '$(basename "$0") --help' for more information"
+                        exit 1
+                    fi
+                    run_container
+                ;;
+                "php-fpm")
+                    run_container
+                ;;
+                *)
+                    echo "Container name $CONTAINER not recognized. Try '$(basename "$0") --help' for more information"
+                ;;
+            esac
+        fi
     ;;
-    "--stop")
-        CONTAINER=$2
-        case $CONTAINER in
-            "--all")
-                stop_container "mysql"
-                stop_container "php-fpm"
-                stop_container "nginx-http"
-                stop_container "haproxy"
-            ;;
-            "haproxy")
-                stop_container "$CONTAINER"
-            ;;
-            "mysql")
-                stop_container "$CONTAINER"
-            ;;
-            "nginx-http")
-                stop_container "$CONTAINER"
-            ;;
-            "nginx-rtmp")
-                stop_container "$CONTAINER" "$3"
-            ;;
-            "php-fpm")
-                stop_container "$CONTAINER"
-            ;;
-            *)
-                echo "Container $CONTAINER not recognized. Try '$(basename "$0") --help' for more information"
-            ;;
-        esac
-
+    "stop")
+        if $ALL;
+        then
+            stop_container "mysql"
+            stop_container "php-fpm"
+            stop_container "nginx-http"
+            stop_container "haproxy"
+        else
+            if [ -z "$CONTAINER" ];
+            then
+                echo "ERROR: Container name is missing. Try '$(basename "$0") --help' for more information"
+                exit 1
+            fi
+            case $CONTAINER in
+                "haproxy")
+                    stop_container
+                ;;
+                "mysql")
+                    stop_container
+                ;;
+                "nginx-http")
+                    stop_container
+                ;;
+                "nginx-rtmp")
+                    if [ -z "$CASTER" ];
+                    then
+                        echo "ERROR: Caster name is missing. Try '$(basename "$0") --help' for more information"
+                        exit 1
+                    fi
+                    stop_container
+                ;;
+                "php-fpm")
+                    stop_container
+                ;;
+                *)
+                    echo "Container name $CONTAINER not recognized. Try '$(basename "$0") --help' for more information"
+                ;;
+            esac
+        fi
     ;;
-    "--restart")
-        CONTAINER=$2
-        case $CONTAINER in
-            "--all")
-                containermod --stop --all
-                containermod --start --all
-            ;;
-            "haproxy")
-                containermod --stop "$CONTAINER"
-                containermod --start "$CONTAINER"
-            ;;
-            "mysql")
-                containermod --stop "$CONTAINER"
-                containermod --start "$CONTAINER"
-            ;;
-            "nginx-http")
-                containermod --stop "$CONTAINER"
-                containermod --start "$CONTAINER"
-            ;;
-            "nginx-rtmp")
-                containermod --stop "$CONTAINER" "$CASTER"
-                containermod --start "$CONTAINER" "$CASTER" "$CHANNEL" "$GAME"
-            ;;
-            "php-fpm")
-                containermod --stop "$CONTAINER"
-                containermod --start "$CONTAINER"
-            ;;
-            *)
-                echo "Container $CONTAINER not recognized. Try '$(basename "$0") --help' for more information"
-            ;;
-        esac
-    ;;
-    "--list")
-        docker ps --all
-    ;;
-    "--help")
-        echo "$(basename "$0") -- Script to start or stop RTMP containers.
-
-    Usage: $(basename "$0") <operation>
-
-    Allowed operations: --add, --modify, --remove, --list
-    --start
-        Used for starting a new channel container
-
-        Usage: $(basename "$0") --start <channel> <caster>
-
-        Parameters:
-            - channel: The name of the channel for which the stream will be sent to
-            - caster: The nickname of the caster operating OBS or similar streaming software
-    --stop
-        Used for stopping a channel container
-
-        Usage: $(basename "$0") --stop <channel>
-
-        Parameters:
-            - channel: The name of the channel for which the stream was be sent to
-    --list
-        Used for listing available channels. Will list all channels present in the database.
-
-        Usage: $(basename "$0") --list
-    "
-
+    "restart")
+        if $ALL;
+        then
+            containermod --stop --all
+            containermod --start --all
+        else
+            if [ -z "$CONTAINER" ];
+            then
+                echo "ERROR: Container name is missing. Try '$(basename "$0") --help' for more information"
+                exit 1
+            fi
+            case $CONTAINER in
+                "haproxy" | "mysql" | "nginx-http" | "php-fpm")
+                    containermod --stop --name "$CONTAINER"
+                    containermod --start --name "$CONTAINER"
+                ;;
+                "nginx-rtmp")
+                    echo "ERROR: nginx-rtmp containers can't be restarted automatically. Use stop/start instead."
+                    exit 1
+                ;;
+                *)
+                    echo "Container $CONTAINER not recognized. Try '$(basename "$0") --help' for more information"
+                ;;
+            esac
+        fi
     ;;
     *)
         echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"

@@ -3,10 +3,11 @@
     "username": "RTMP Server",
     "embeds": [{
         "author": {
-          "name": "nginx-rtmp-$CASTER",
+          "name": "$CONTAINER_NAME_PREFIX-$CASTER",
           "icon_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png"
         },
         "description": "Stopping the stream container failed.\n$MESSAGE",
         "color": "13369344"
-    }]
+    }],
+    "content":"<@&$SUPPORT_GROUP>"
 }

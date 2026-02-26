@@ -1,0 +1,125 @@
+<html>
+    <head>
+        <title>Kanaliiga PUBG OBS Overlay: map intro</title>
+        <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@400;500&display=swap');
+            body {
+                overflow: hidden;
+            }
+            .scene {
+                width: 1920px;
+                height: 1080px;
+            }
+            .headline {
+                display: none;
+                position: absolute;
+                top: 270px;
+                left: 798px;
+                width: 324px;
+                height: 180px;
+            }
+            h1,h2,h3 {
+                font-family: 'Big Shoulders Display', sans-serif;
+                text-transform: uppercase;
+                text-align: center;
+            }
+            h1 {
+                font-size: 40px;
+                color: #282728;
+            }
+            h2,h3 {
+                color: #f29209;
+            }
+            h2 {
+                font-size: 60px;
+            }
+            h3 {
+                font-size: 30px;
+            }
+            .league {
+                position: absolute;
+                top: -20px;
+                width: 100%;
+            }
+            .mapName {
+                position: absolute;
+                top: 10px;
+                width: 100%;
+            }
+            .matchNumber {
+                position: absolute;
+                top: 100px;
+                width: 100%;
+            }
+            img.ad {
+                position: absolute;
+                max-width: 257px;
+                right: 13px;
+                height: auto;
+            }
+            span {
+                color: #f29209;
+            }
+        </style>
+    </head>
+    <body onload="createPage()">
+        <div id="scene" class="scene">
+            <div id="headline" class="headline">
+                <div id="league" class="league">
+                </div>
+                <div id="mapName" class="mapName">
+                </div>
+                <div id="matchNumber" class="matchNumber">
+                </div>
+            </div>
+        </div>
+        <script>
+            function createPage() {
+                var queryString = window.location.search;
+                var urlParams = new URLSearchParams(queryString);
+                var group = urlParams.get('league');
+                $.get('https://dev.kanaliiga.fi/tournament.txt', function(tournament) {
+                    var randomStr = new Date().getTime();
+                    $.getJSON('https://dev.kanaliiga.fi/gameday.json?rndstr='+randomStr, function(json) {
+                        var leagueDiv = document.getElementById("league");
+                        var mapNameDiv = document.getElementById("mapName");
+                        var matchNumberDiv = document.getElementById("matchNumber");
+                        var league = document.createElement("h1");
+                        var mapName = document.createElement("h2");
+                        var matchNumber = document.createElement("h3");
+                        $(json.gameDays).each(function(index, groupJson) {
+                            if (!group || groupJson.key == group) {
+                                if (!group) {
+                                    group = groupJson.key;
+                                }
+                                var currentMapNumber = groupJson.currentDayPlayedMaps + 1;
+                                var dayNumber = groupJson.currentMatchDay;
+                                var mapList = groupJson.maps;
+                                var mapCount = mapList.length;
+                                var mapIndex = currentMapNumber;
+                                if (currentMapNumber > mapCount) {
+                                    mapIndex = mapCount;
+                                    currentMapNumber = mapCount;
+
+                                }
+                                var matchNumberStr = (dayNumber - 1) * mapCount + currentMapNumber;
+                                league.appendChild(document.createTextNode(groupJson.league));
+                                mapName.appendChild(document.createTextNode(mapList[mapIndex-1]));
+                                matchNumber.appendChild(document.createTextNode("Map " + matchNumberStr));
+                                leagueDiv.appendChild(league);
+                                mapNameDiv.appendChild(mapName);
+                                matchNumberDiv.appendChild(matchNumber);
+                                return false;
+                            } else {
+                                console.log("League '"+group+"' not found");
+                            }
+                        });
+                    });
+                });
+            }
+            $('.headline').hide();
+            $('.headline').delay(4300).fadeIn('fast').delay(4000).fadeOut('fast');
+        </script>
+    </body>
+</html>

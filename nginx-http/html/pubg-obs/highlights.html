@@ -1,0 +1,163 @@
+<html>
+    <head>
+        <title>Kanaliiga PUBG OBS Overlay: highlights</title>
+        <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@400;500&display=swap');
+            body {
+                overflow: hidden;
+            }
+            .scene {
+                width: 1920px;
+                height: 1080px;
+            }
+            .headline {
+                position: absolute;
+                top: 68px;
+                left: 500px;
+                width: 900px;
+            }
+            h1 {
+                font-family: 'Big Shoulders Display', sans-serif;
+                text-transform: uppercase;
+                font-size: 60px;
+                text-align: center;
+                color: #f29209;
+            }
+            .h1box {
+                position: absolute;
+                top: -10px;
+                left: 5px;
+            }
+            .winner {
+                width: 320px;
+                height: 420px;
+                position: absolute;
+                left: 1566px;
+                top: 600px;
+                background: rgba(40, 39, 40, 0.7);
+                border-style: solid;
+                border-radius: 3px;
+                border-color: #f29209;
+                display: none;
+            }
+            .winnerimg {
+                max-width: 280px;
+                max-height: 280px;
+                height: auto;
+                width: auto;
+            }
+            .imgdiv {
+                justify-content: center;
+                display: flex;
+            }
+            .wwcd {
+                font-family: 'Big Shoulders Display', sans-serif;
+                text-transform: uppercase;
+                font-size: 60px;
+                text-align: center;
+                color: #f29209;
+            }
+            .winnerName {
+                font-family: 'Big Shoulders Display', sans-serif;
+                text-transform: uppercase;
+                font-size: 40px;
+                text-align: center;
+                color: #f29209;
+                margin-top: 10px;
+            }
+        </style>
+    </head>
+    <body onload="createPage()">
+        <div id="scene" class="scene">
+            <div id="headline" class="headline">
+                <div id="h1box" class="h1box">
+                </div>
+            </div>
+            <div id="winner" class="winner">
+                <div class="wwcd">Winner</div>
+            </div>
+        </div>
+        <script>
+            function createPage() {
+                var queryString = window.location.search;
+                var urlParams = new URLSearchParams(queryString);
+                var group = urlParams.get('league');
+                var origJson = null;
+                var foundWinner = false;
+                $.get('https://dev.kanaliiga.fi/tournament.txt', function(tournament) {
+                    $.getJSON('https://dev.kanaliiga.fi/gameday.json?rndstr='+new Date().getTime(), function(json) {
+                        origJson = JSON.stringify(json);
+                        var sponsors = document.getElementById("sponsors");
+                        var h1box = document.getElementById("h1box");
+                        var tournamenth1 = document.createElement("h1");
+                        $(json.gameDays).each(function(index, groupJson) {
+                            if (!group || groupJson.key == group) {
+                                if (!group) {
+                                    group = groupJson.key;
+                                }
+                                var currentDayPlayedMaps = groupJson.currentDayPlayedMaps + 1;
+                                var dayNumber = groupJson.currentMatchDay;
+                                var mapList = groupJson.maps;
+                                var mapCount = mapList.length;
+                                var updateTime = new Date(groupJson.updateTime);
+                                var diff = Date.now()-updateTime;
+                                var adjust = 0;
+                                if (diff < 10*60*1000) {
+                                    var winnerSlot = null;
+                                    var winnerName = null;
+                                    $.each(groupJson.currentDayMapWinners, function(index, mapJson) {
+                                        var winnerJson = mapJson.winner;
+                                        if (winnerJson != null) {
+                                            winnerSlot = winnerJson.teamId;
+                                            winnerName = winnerJson.name;
+                                        }
+                                    });
+                                    if (winnerSlot != null) {
+                                        foundWinner = true;
+                                        var winnerDiv = document.getElementById("winner");
+                                        var imgDiv = document.createElement("div");
+                                        imgDiv.className = "imgdiv";
+                                        var logoImg = document.createElement("img");
+                                        logoImg.src = "https://dev.kanaliiga.fi/obs-teamlogos/"+tournament+"/"+group+"/"+winnerSlot+".png";
+                                        logoImg.className = "winnerimg"
+                                        imgDiv.appendChild(logoImg);
+                                        winnerDiv.appendChild(imgDiv);
+                                        var nameDiv = document.createElement("div");
+                                        nameDiv.className = "winnerName";
+                                        nameDiv.appendChild(document.createTextNode(winnerName.substr(0, 23)));
+                                        winnerDiv.appendChild(nameDiv);
+                                    }
+                                }
+                                if (foundWinner) {
+                                    adjust = 1;
+                                }
+                                var matchNumberStr = (dayNumber - 1) * mapCount + currentDayPlayedMaps - adjust;
+                                tournamenth1.appendChild(document.createTextNode(groupJson.league + " MAP "+matchNumberStr));
+                                h1box.appendChild(tournamenth1);
+
+                                if (foundWinner) {
+                                    $('.winner').hide();
+                                    $('.winner').fadeIn(500);
+                                }
+
+                                return false;
+                            } else {
+                                console.log("League '"+group+"' not found");
+                            }
+                        });
+                    });
+                });
+
+                setInterval(function() {
+                    $.getJSON('https://dev.kanaliiga.fi/gameday.json?rndstr='+new Date().getTime(), function(json) {
+                        current = JSON.stringify(json);
+                        if (origJson && current && origJson !== current) {
+                            location.reload();
+                        }
+                    });
+                }, 2000);
+            }
+        </script>
+    </body>
+</html>

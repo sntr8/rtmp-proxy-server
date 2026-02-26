@@ -60,7 +60,12 @@ case $OPERATION in
             exit 1
         fi
 
-        docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE casters SET active = false WHERE nick = \"$NICK\" AND internal = false"
+        if docker ps --format '{{.Names}}' |grep $NICK >> /dev/null;
+        then
+          echo "Caster has active containers, can't disable the access"
+        else
+          docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE casters SET active = false WHERE nick = \"$NICK\" AND internal = false"
+        fi
     ;;
     "--list")
         OPTION=$2

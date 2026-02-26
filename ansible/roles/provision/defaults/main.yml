@@ -14,5 +14,4 @@ env_vars:
   IMAGE_VERSION: "{{ image_version }}"
   DISCORD_WEBHOOK_PUBG: "{{ discord_webhook_pubg }}"
   DISCORD_WEBHOOK_OTHERS: "{{ discord_webhook_others }}"
-  TOURNAMENT_BANNER: "qualifiers"
   CONFIG_BRANCH: "{{ config_branch }}"

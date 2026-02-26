@@ -1,0 +1,13 @@
+{
+    "avatar_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png",
+    "username": "RTMP Server",
+    "embeds": [{
+        "author": {
+          "name": "$CONTAINER_NAME_PREFIX-$COCASTER",
+          "icon_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png"
+        },
+        "description": "Co-caster proxy container startup failed.\n$MESSAGE \nThe container needs to be started manually after the problem has been fixed.",
+        "color": "13369344"
+    }],
+    "content":"<@&$SUPPORT_GROUP>"
+}

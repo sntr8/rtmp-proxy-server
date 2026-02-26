@@ -3,11 +3,11 @@
     "username": "RTMP Server",
     "embeds": [{
         "author": {
-          "name": "nginx-rtmp-$CASTER",
+          "name": "$CONTAINER_NAME_PREFIX-$CASTER",
           "icon_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png"
         },
-        "description": "Stream container startup failed and further startup attempts has been suspended.\n$MESSAGE",
+        "description": "Stream container startup failed and further startup attempts has been suspended.\n$MESSAGE \nAfter the problem has been fixed, run \n`streammod --unskip <id>` to start the container again.",
         "color": "13369344"
     }],
-    "content":"<@$DISCORD_ID>"
+    "content":"<@&$SUPPORT_GROUP>"
 }

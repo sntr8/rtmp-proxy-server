@@ -27,6 +27,19 @@ case $OPERATION in
             exit 1
         fi
 
+        COCASTER=""
+
+        read -r -p "Is there a co-caster who needs a proxy container? [y/N] " RESPONSE
+        case "$RESPONSE" in
+            [yY][eE][sS]|[yY])
+              castermod --list --ids
+              read -r -p "What's the co-caster ID (Use the list above): " COCASTER
+            ;;
+            *)
+                echo "Won't add a co-caster proxy"
+            ;;
+        esac
+
         echo "Available channels: "
         channelmod --list --ids
         read -r -p "What's the channel ID (Use the list above): " CHANNEL
@@ -56,6 +69,12 @@ case $OPERATION in
             exit 1
         fi
 
+        if ! db_is_channel_free "$START_TIME" $CHANNEL;
+        then
+            echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
+            exit 1
+        fi
+
         echo "Container will be started 30 minutes before the stream, if possible."
 
         read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM): " END_TIME
@@ -63,6 +82,18 @@ case $OPERATION in
         if ! [[ "$END_TIME" =~ $REGEXP ]];
         then
             echo "Start time is not in a valid format"
+            exit 1
+        fi
+
+        if ! db_is_channel_free "$END_TIME" $CHANNEL;
+        then
+            echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
+            exit 1
+        fi
+
+        if ! db_stream_collides_with_another "$CHANNEL" "$START_TIME" "$END_TIME";
+        then
+            echo "ERROR: The requested channel is already occupied during the requested timespan. Can't schedule a stream."
             exit 1
         fi
 
@@ -76,13 +107,23 @@ case $OPERATION in
     Game: $(db_get_game_name_with_id $GAME)
     Twitch title: $TITLE
     Start time: $START_TIME
-    End time: $END_TIME
-        "
+    End time: $END_TIME"
+        if [ ! -z $COCASTER ];
+        then
+            echo "    Also adding proxy container for co-caster: $(db_get_caster_name_with_id $COCASTER)"
+        fi
 
-        read -r -p "Are you sure you want to create a new game with above details? [y/N] " RESPONSE
+        printf "\n"
+
+        read -r -p "Are you sure you want to create a new stream with above details? [y/N] " RESPONSE
         case "$RESPONSE" in
             [yY][eE][sS]|[yY])
-                docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %T'), STR_TO_DATE('$END_TIME','%d.%m.%Y %T'))"
+                if [ ! -z $COCASTER ];
+                then
+                  docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`cocaster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $COCASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %T'), STR_TO_DATE('$END_TIME','%d.%m.%Y %T'))"
+                else
+                  docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %T'), STR_TO_DATE('$END_TIME','%d.%m.%Y %T'))"
+                fi
                 if [ $? -eq 0 ];
                 then
                     exit 0
@@ -98,7 +139,6 @@ case $OPERATION in
         esac
     ;;
     "--add-proxy")
-        CHANNEL_NAME="proxy-only"
         echo "Available casters: "
         castermod --list --ids
         read -r -p "What's the caster ID (Use the list above): " CASTER
@@ -108,14 +148,6 @@ case $OPERATION in
             echo "$CASTER is not a valid caster ID"
             exit 1
         fi
-
-        read -r -p "Is this second simultaneous proxy container? [y/N] " SIMULTANEOUS
-
-        case "$SIMULTANEOUS" in
-            [yY][eE][sS]|[yY])
-                CHANNEL_NAME="proxy-only2"
-            ;;
-        esac
 
         read -r -p "Start time of the stream? (Format: DD.MM.YYYY HH:MM): " START_TIME
 
@@ -137,10 +169,32 @@ case $OPERATION in
 
         echo "Container will be stopped 30 minutes after the stream, if possible."
 
+        PROXY_COUNT=$(db_get_proxychannel_count)
+        PROXY_CHANNEL=""
+        for (( i=1; i <= PROXY_COUNT; i++ ))
+        do
+          I_CHANNEL_ID=$(channelmod --get-id "only$i-proxy")
+          if db_is_channel_free "$START_TIME" $I_CHANNEL_ID;
+          then
+            if db_is_channel_free "$END_TIME" $I_CHANNEL_ID;
+            then
+              PROXY_CHANNEL_ID=$I_CHANNEL_ID
+              break
+            fi
+          fi
+        done
+
+        if [ ! -z $PROXY_CHANNEL ];
+        then
+          echo "No proxy channel was free for the stream. Can't schedule one"
+          exit 1
+        fi
+
         printf "\n\n"
 
         echo "Creating a proxy server with details:
     Caster: $(db_get_caster_name_with_id $CASTER)
+    Channel: $(db_get_channel_name_with_id $PROXY_CHANNEL_ID)
     Start time: $START_TIME
     End time: $END_TIME
         "
@@ -148,10 +202,7 @@ case $OPERATION in
         read -r -p "Are you sure you want to create a proxy server with above details? [y/N] " RESPONSE
         case "$RESPONSE" in
             [yY][eE][sS]|[yY])
-                echo "Using channel $CHANNEL_NAME"
-                CHANNEL=$(channelmod --get-id $CHANNEL_NAME)
-                echo "Channel is: $CHANNEL"
-                docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %T'), STR_TO_DATE('$END_TIME','%d.%m.%Y %T'))"
+                docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $PROXY_CHANNEL_ID, false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %T'), STR_TO_DATE('$END_TIME','%d.%m.%Y %T'))"
                 if [ $? -eq 0 ];
                 then
                     exit 0
@@ -186,9 +237,9 @@ case $OPERATION in
         if [ -z $OPTION ];
         then
             echo "Upcoming streams: "
-            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND ch.access_token IS NOT NULL and start_time >= NOW() ORDER BY start_time"
+            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, (SELECT IFNULL(cc.nick, \"Not set\") FROM casters cc, streams st WHERE cc.id = st.cocaster_id AND st.id = s.id) as cocaster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND ch.access_token IS NOT NULL and start_time >= NOW() ORDER BY start_time"
             echo "Upcoming proxies"
-            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, s.start_time, s.end_time FROM casters ca, channels ch, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND ch.name = 'proxy-only' AND start_time >= NOW() AND ch.access_token IS NULL ORDER BY start_time"
+            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, s.start_time, s.end_time FROM casters ca, channels ch, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND ch.name LIKE '%-proxy' AND start_time >= NOW() AND ch.access_token IS NULL ORDER BY start_time"
             exit 0
         else
             case $OPTION in
@@ -198,6 +249,207 @@ case $OPERATION in
                 ;;
             esac
         fi
+    ;;
+    "--update")
+        STREAM_ID=$2
+        if [ -z $STREAM_ID ];
+        then
+            echo "Stream id was not given. Try '$(basename "$0") --help' for more information."
+            exit 1
+        fi
+
+        if ! db_stream_exists $STREAM_ID;
+        then
+            echo "Stream does not exists with id $STREAM_ID"
+            exit 1
+        fi
+
+        CASTER_NAME=$(db_get_caster_with_stream_id $STREAM_ID)
+        CHANNEL_NAME=$(db_get_channel_with_stream_id $STREAM_ID)
+        COCASTER=$(db_get_cocaster_name_with_stream_id $STREAM_ID)
+        TITLE=$(db_get_stream_title $STREAM_ID)
+        START_TIME=$(db_get_stream_start_time $STREAM_ID)
+        END_TIME=$(db_get_stream_end_time $STREAM_ID)
+
+        echo "Stream caster is: $CASTER_NAME"
+        read -r -p "Want to edit the caster? [y/N] " RESPONSE_CASTER
+        case "$RESPONSE_CASTER" in
+            [yY][eE][sS]|[yY])
+                echo "Available casters: "
+                castermod --list --ids
+                read -r -p "What's the caster ID (Use the list above): " EDIT_CASTER
+
+                if ! db_get_caster_name_with_id $EDIT_CASTER > /dev/null;
+                then
+                    echo "$EDIT_CASTER is not a valid caster ID"
+                    exit 1
+                fi
+
+                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET caster_id = $EDIT_CASTER WHERE id = $STREAM_ID"
+                echo "Updated to the database"
+            ;;
+        esac
+
+        printf "\n"
+
+        echo "Stream channel is: $CHANNEL_NAME"
+        read -r -p "Want to edit the channel? [y/N] " RESPONSE_CHANNEL
+
+        case "$RESPONSE_CHANNEL" in
+            [yY][eE][sS]|[yY])
+                echo "Available channels: "
+                channelmod --list --ids
+                read -r -p "What's the channel ID (Use the list above): " EDIT_CHANNEL
+
+                if ! db_get_channel_name_with_id $EDIT_CHANNEL > /dev/null;
+                then
+                    echo "$EDIT_CHANNEL is not a valid channel ID"
+                    exit 1
+                fi
+
+                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET channel_id = $EDIT_CHANNEL WHERE id = $STREAM_ID"
+                echo "Updated to the database"
+            ;;
+        esac
+
+        printf "\n"
+
+        if [ ! -z $COCASTER ];
+        then
+            echo "Stream has a co-caster container for: $COCASTER"
+            read -r -p "Want to change the co-caster container?
+Edit: e
+Delete: d
+No changes: N
+[e/d/N]: " RESPONSE_COCASTER
+
+            case "$RESPONSE_COCASTER" in
+                [eE][dD][iI][tT]|[e])
+                    echo "Available co-casters: "
+                    castermod --list --ids
+                    read -r -p "What's the co-caster ID (Use the list above): " EDIT_COCASTER
+
+                    if ! db_get_caster_name_with_id $EDIT_CASTER > /dev/null;
+                    then
+                        echo "$EDIT_CASTER is not a valid caster ID"
+                        exit 1
+                    fi
+
+                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET cocaster_id = $EDIT_COCASTER WHERE id = $STREAM_ID"
+                    echo "Updated to the database"
+                ;;
+                [dD][eE][lL][eE][tT][eE]|[d])
+                    read -r -p "Confirm delete co-caster container from the stream? [y/N] " RESPONSE_CC_CONFIRM
+                    case "$RESPONSE_CC_CONFIRM" in
+                        [yY][eE][sS]|[yY])
+                            docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET cocaster_id = null WHERE id = $STREAM_ID"
+                            echo "Updated to the database"
+                        ;;
+                    esac
+                ;;
+            esac
+        else
+            read -r -p "Stream has no co-caster container set. Want to add one? [y/N] " RESPONSE_COCASTER_ADD
+            case "$RESPONSE_COCASTER_ADD" in
+                [yY][eE][sS]|[yY])
+                    echo "Available co-casters: "
+                    castermod --list --ids
+                    read -r -p "What's the co-caster ID (Use the list above): " EDIT_COCASTER
+
+                    if ! db_get_caster_name_with_id $EDIT_COCASTER > /dev/null;
+                    then
+                        echo "$EDIT_COCASTER is not a valid caster ID"
+                        exit 1
+                    fi
+
+                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET cocaster_id = $EDIT_COCASTER WHERE id = $STREAM_ID"
+                    echo "Updated to the database"
+                ;;
+            esac
+        fi
+
+        printf "\n"
+
+        echo "Stream title is: $TITLE"
+        read -r -p "Want to edit the title? [y/N] " RESPONSE_TITLE
+
+        case "$RESPONSE_TITLE" in
+            [yY][eE][sS]|[yY])
+                read -r -p "Twitch title for the stream? (Format 'Kanaliiga <game> <series> | <Division> | <Caster> & <Co-Caster>'): " EDIT_TITLE
+
+                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET title = '$EDIT_TITLE' WHERE id = $STREAM_ID"
+                echo "Updated to the database"
+            ;;
+        esac
+
+        printf "\n"
+
+        echo "Stream start time is: $START_TIME"
+        read -r -p "Want to edit the start time? [y/N] " RESPONSE_START
+
+        case "$RESPONSE_START" in
+            [yY][eE][sS]|[yY])
+                read -r -p "Start time of the stream? (Format: DD.MM.YYYY HH:MM): " EDIT_START_TIME
+
+                if ! [[ "$EDIT_START_TIME" =~ $REGEXP ]];
+                then
+                    echo "Time is not in a valid format"
+                    exit 1
+                fi
+
+                if ! db_is_channel_free "$EDIT_START_TIME" $(channelmod --get-id $CHANNEL_NAME) $STREAM_ID;
+                then
+                  echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
+                  exit 1
+                fi
+
+                if ! db_stream_collides_with_another "$(channelmod --get-id $CHANNEL_NAME)" "$EDIT_START_TIME" "$END_TIME" $STREAM_ID;
+                then
+                    echo "ERROR: The requested channel is already occupied during the requested timespan. Can't schedule a stream."
+                    exit 1
+                fi
+
+                START_TIME="$EDIT_START_TIME"
+
+                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET start_time = STR_TO_DATE('$EDIT_START_TIME','%d.%m.%Y %T') WHERE id = $STREAM_ID"
+                echo "Updated to the database"
+            ;;
+        esac
+
+        printf "\n"
+
+        echo "Stream end time is: $END_TIME"
+        read -r -p "Want to edit the start time? [y/N] " RESPONSE_END
+
+        case "$RESPONSE_END" in
+            [yY][eE][sS]|[yY])
+                read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM): " EDIT_END_TIME
+
+                if ! [[ "$EDIT_END_TIME" =~ $REGEXP ]];
+                then
+                    echo "Time is not in a valid format"
+                    exit 1
+                fi
+
+                if ! db_is_channel_free "$EDIT_END_TIME" $(channelmod --get-id $CHANNEL_NAME) $STREAM_ID;
+                then
+                  echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
+                  exit 1
+                fi
+
+                if ! db_stream_collides_with_another "$(channelmod --get-id $CHANNEL_NAME)" "$START_TIME" "$EDIT_END_TIME" $STREAM_ID;
+                then
+                    echo "ERROR: The requested channel is already occupied during the requested timespan. Can't schedule a stream."
+                    exit 1
+                fi
+
+                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET end_time = STR_TO_DATE('$EDIT_END_TIME','%d.%m.%Y %T') WHERE id = $STREAM_ID"
+                echo "Updated to the database"
+            ;;
+        esac
+
+        echo "No further details to edit"
+        exit 0
     ;;
     "--set")
         OPTION=$2
@@ -324,6 +576,9 @@ case $OPERATION in
     Usage: $(basename "$0") <operation>
 
     Allowed operations: --list
+    -- add
+        An interactive tool to create new streams.
+
     --ended
         Used to show a list of ended streams that have container running. Used internally on code. Not meant for user use, check --ending instead.
 
@@ -362,6 +617,9 @@ case $OPERATION in
         Used to show a list of starting streams.
 
         Usage: $(basename "$0") --upcoming
+
+    --update <id>
+        An interactive tool to update an existing defined stream
 
     --warnings
         Used to show ending streams. Used internally on code. Not meant for user use, check --ending instead.

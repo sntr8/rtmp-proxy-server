@@ -162,6 +162,28 @@ db_get_channel_name_with_id() {
     fi
 }
 
+db_get_cocaster_name_with_stream_id() {
+  STREAM=$1
+
+  if [ -z $STREAM ];
+  then
+      echo "Stream ID was not provided"
+      return 1
+  else
+      MYSQL_CONTAINER_ID=$(mysql_container_id)
+      COCASTER=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT c.nick FROM casters c, streams s WHERE c.id = s.cocaster_id AND s.id = '$STREAM'")
+      COCASTER=${COCASTER%$'\r'}
+      echo $COCASTER
+  fi
+}
+
+db_get_proxychannel_count() {
+  MYSQL_CONTAINER_ID=$(mysql_container_id)
+  COUNT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT count(*) FROM channels WHERE name LIKE 'only%-proxy'")
+  COUNT=${COUNT%$'\r'}
+  echo "$COUNT"
+}
+
 db_get_game_name_with_id() {
     GAME=$1
 
@@ -217,6 +239,21 @@ db_get_stream_end_time() {
     fi
 }
 
+db_get_stream_start_time() {
+    STREAM=$1
+
+    if [ -z $STREAM ];
+    then
+        echo "Stream ID was not provided"
+        return 1
+    else
+        MYSQL_CONTAINER_ID=$(mysql_container_id)
+        START_TIME=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT start_time FROM streams WHERE id = '$STREAM'")
+        START_TIME=${START_TIME%$'\r'}
+        echo $START_TIME
+    fi
+}
+
 db_get_stream_shut_down_time() {
     STREAM=$1
     INTERVAL=$2
@@ -253,6 +290,34 @@ db_get_stream_title() {
     fi
 }
 
+db_is_channel_free() {
+    TIME=$1
+    ID=$2
+    EXCLUDE=$3
+
+    if [[ -z $TIME || -z $ID ]];
+    then
+        echo "Channel ID or time was not provided"
+        return 1
+    else
+        MYSQL_CONTAINER_ID=$(mysql_container_id)
+        if [ ! -z $EXCLUDE ];
+        then
+            COUNT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT count(*) FROM streams WHERE STR_TO_DATE('$TIME','%d.%m.%Y %T') BETWEEN start_time AND end_time AND channel_id = '$ID' AND id != '$EXCLUDE'")
+        else
+            COUNT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT count(*) FROM streams WHERE STR_TO_DATE('$TIME','%d.%m.%Y %T') BETWEEN start_time AND end_time AND channel_id = '$ID'")
+        fi
+        COUNT=${COUNT%$'\r'}
+        if [ $COUNT -eq 0 ];
+        then
+            return 0
+        else
+            return 1
+        fi
+    fi
+    return 1
+}
+
 db_set_channel_access_token() {
     CHANNEL=$1
     TOKEN=$2
@@ -276,6 +341,58 @@ db_set_channel_access_token() {
         return 0
     else
         return 1
+    fi
+}
+
+db_stream_collides_with_another() {
+    ID=$1
+    START_TIME=$2
+    END_TIME=$3
+    EXCLUDE=$4
+
+    if [[ -z $START_TIME || -z $END_TIME || -z $ID ]];
+    then
+        echo "Channel ID or time was not provided"
+        return 1
+    else
+        MYSQL_CONTAINER_ID=$(mysql_container_id)
+
+        if [ ! -z $EXCLUDE ];
+        then
+            COUNT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT count(*) FROM streams WHERE (start_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T') or end_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T')) AND channel_id = '$ID' AND id != '$EXCLUDE';")
+        else
+            COUNT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT count(*) FROM streams WHERE (start_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T') or end_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T')) AND channel_id = '$ID';")
+        fi
+        COUNT=${COUNT%$'\r'}
+        if [ $COUNT -eq 0 ];
+        then
+          return 0
+        else
+          return 1
+        fi
+    fi
+}
+
+db_stream_exists() {
+    ID=$1
+
+    if [ -z "$ID" ];
+    then
+        echo "Stream ID was not provided"
+        return 1
+    else
+        MYSQL_CONTAINER_ID=$(mysql_container_id)
+        STREAMCOUNT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "select count(*) from streams where id = $ID")
+        STREAMCOUNT=${STREAMCOUNT%$'\r'}
+        if [ $STREAMCOUNT -eq 0 ];
+        then
+            return 1
+        elif [ $STREAMCOUNT -eq 1 ];
+        then
+            return 0
+        else
+            return 1
+        fi
     fi
 }
 
@@ -345,6 +462,29 @@ search_game() {
     if [ $GAME_FOUND -eq 1 ];
     then
         echo "[ERROR]: Game $GAME was not found from the database"
+        return 1
+    fi
+}
+
+twitch_get_api_error() {
+    CHANNEL=$1
+
+    if [ -z $CHANNEL ];
+    then
+        echo "Channel was not provided"
+        return 1
+    fi
+
+    if twitch_validate_access_token $CHANNEL;
+    then
+
+        BROADCASTER_ID=$(twitch_get_broadcaster_id $CHANNEL)
+        TWITCH_ACCESS_TOKEN=$(db_get_channel_access_token $CHANNEL)
+        TWITCH_CLIENT_ID=$(db_get_channel_client_id $CHANNEL)
+
+        curl -s -X GET "https://api.twitch.tv/helix/streams/key?broadcaster_id=$BROADCASTER_ID" -H "Authorization: Bearer $TWITCH_ACCESS_TOKEN" -H "Client-Id: $TWITCH_CLIENT_ID"
+    else
+        echo "Twitch access key is not valid"
         return 1
     fi
 }

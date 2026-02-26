@@ -1,4 +1,4 @@
-FROM php:fpm
+FROM php:fpm-alpine3.17
 
 ENV TZ="Europe/Helsinki"
 

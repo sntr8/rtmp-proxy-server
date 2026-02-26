@@ -21,15 +21,19 @@
         $dirs = array("img/common/");
         $ads = array();
 
-        if (! empty($game)) {
-            array_push($dirs, "img/".$game."/");
+        if (! empty($game) ) {
+            if (file_exists("img/".$game."/")) {
+                array_push($dirs, "img/".$game."/");
+            }
         }
 
-        foreach ($dirs as $dir) {
-            $images = glob($dir."*.{jpg,png}", GLOB_BRACE);
+        $valid_ext = array("jpg", "jpeg", "png");
 
-            foreach($images as $image) {
-                array_push($ads, $image);
+        foreach ($dirs as $dir) {
+            foreach (new DirectoryIterator($dir) as $fileInfo) {
+                if (in_array($fileInfo->getExtension(), $valid_ext) ) {
+                    array_push($ads, $dir.$fileInfo->getFilename());
+                }
             }
         }
 

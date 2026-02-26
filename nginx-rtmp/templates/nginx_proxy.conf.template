@@ -1,0 +1,30 @@
+user root root;
+worker_processes 1;
+error_log /opt/nginx/logs/error.log debug;
+
+events {
+    worker_connections 1024;
+}
+
+rtmp {
+    log_format format '[$time_local]: From: [$connection]:[$remote_addr] To: [$app] Cmd: [$command]';
+    access_log /opt/nginx/logs/access.log format;
+    server {
+        listen 1935;
+        chunk_size 4096;
+        buflen 100ms;
+
+        application ${CASTER} {
+            live on;
+            record off;
+            wait_key on;
+            wait_video on;
+            sync 100ms;
+            meta copy;
+            push_reconnect 500ms;
+            on_publish http://nginx-http/rtmp/auth.php;
+            on_play http://nginx-http/rtmp/auth.php;
+            exec_push /usr/bin/ffmpeg -loglevel debug -re -rtmp_live live -i "rtmp://127.0.0.1/${app}/${name}" -codec copy -f flv rtmp://live-osl.twitch.tv/app/${TWITCH_STREAM_KEY} 2>>/opt/nginx/logs/ffmpeg.log;
+        }
+    }
+}

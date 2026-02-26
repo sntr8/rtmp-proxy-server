@@ -53,8 +53,13 @@ ALTER TABLE `streams` ADD CONSTRAINT `streams_fk2` FOREIGN KEY (`game_id`) REFER
 
 ALTER TABLE `streams` ADD CONSTRAINT `streams_et_chk` CHECK (`end_time` > `start_time`);
 
-INSERT INTO casters (nick, stream_key, active, internal, date_added) VALUES ('internal_technical_user', 'c940cdf1ce11b0a9', true, true, NOW());
-INSERT INTO casters (nick, stream_key, active, internal, date_added) VALUES ('vlc_viewer', 'spectator', true, true, NOW());
+INSERT INTO casters (nick, stream_key, active, internal, date_added) VALUES ('internal_technical_user', 'streamkey', true, true, NOW());
+INSERT INTO casters (nick, stream_key, active, internal, date_added) VALUES ('vlc_viewer', 'streamkey', true, true, NOW());
+INSERT INTO casters (nick, stream_key, discord_id, active, internal, date_added) VALUES ('sntr', 'streamkey', '427390144748847105', false, false, NOW());
+INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, access_token_expires, port, url) VALUES ('kanaliigatv', 'KanaliigaTV', 'access_token', 'gp762nuuoqcoxypju8c569th9wz7q5', 'refresh_token', STR_TO_DATE('2021-06-17T21:25', '%Y-%m-%dT%H:%i'), '48001', 'https://www.twitch.tv/kanaliigatv');
+INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, access_token_expires, port, url) VALUES ('kanaliigatv2', 'KanaliigaTV2', 'access_token', 'gp762nuuoqcoxypju8c569th9wz7q5', 'refresh_token', STR_TO_DATE('2021-06-17T21:26', '%Y-%m-%dT%H:%i'), '48002', 'https://www.twitch.tv/kanaliigatv2');
+INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, access_token_expires, port, url) VALUES ('kanaliigatv3', 'KanaliigaTV3', 'access_token', 'gp762nuuoqcoxypju8c569th9wz7q5', 'refresh_token', STR_TO_DATE('2021-06-17T21:40', '%Y-%m-%dT%H:%i'), '48003', 'https://www.twitch.tv/kanaliigatv3');
+INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, access_token_expires, port, url) VALUES ('kanaliigabot', 'Test Channel', 'access_token', 'gp762nuuoqcoxypju8c569th9wz7q5', 'refresh_token', STR_TO_DATE('2021-06-15T14:25', '%Y-%m-%dT%H:%i'), '48004', 'https://www.twitch.tv/kanaliigabot');
 INSERT INTO channels (name, display_name, port) VALUES ('proxy-only', 'Internal Proxy Channel', '48005');
 INSERT INTO channels (name, display_name, port) VALUES ('proxy-only2', 'Internal Proxy Channel 2', '48006');
 INSERT INTO games (name, display_name, abbreviation, delay) VALUES ('pubg', 'PlayerUnknown''s Battlegrounds', 'PUBG', '480');

@@ -10,11 +10,15 @@ STREAM_ID=$2
 MESSAGE=$(echo "$3" |cut -c -500)
 WEBHOOK_URL=$DISCORD_WEBHOOK_OTHERS
 SESSION_ID=$(od -x /dev/urandom | head -1 | awk '{OFS="-"; print $2$3,$4,$5,$6,$7$8$9}')
+SUPPORT_GROUP="1088395861588975657"
 
 if [ -z "$STREAM_ID" ];
 then
     mkdir /tmp/$SESSION_ID
     cp $SOURCE_DIR/discord/templates/$CASE.json.template /tmp/$SESSION_ID/$CASE.json.template
+
+    export SUPPORT_GROUP="$SUPPORT_GROUP"
+
     envsubst < /tmp/$SESSION_ID/$CASE.json.template > /tmp/$SESSION_ID/$CASE.json
 
     curl -H "Content-Type: application/json" -X POST -d @/tmp/$SESSION_ID/$CASE.json $WEBHOOK_URL
@@ -28,18 +32,28 @@ else
         MESSAGE="Check worker log for more info."
     fi
 
+    PROXY=false
     CASTER=$(db_get_caster_with_stream_id $STREAM_ID)
     CHANNEL=$(db_get_channel_with_stream_id $STREAM_ID)
+    COCASTER=$(db_get_cocaster_name_with_stream_id $STREAM_ID)
     GAME=$(db_get_game_with_stream_id $STREAM_ID)
     END_TIME=$(db_get_stream_end_time $STREAM_ID)
     SHUTDOWN_TIME=$(db_get_stream_shut_down_time $STREAM_ID "30")
-    PORT=$(db_get_channel_port $CHANNEL)
     DISCORD_ID=$(db_get_caster_discord_id $CASTER)
-    SERVER_URL="rtmp://$FQDN:$PORT/$CASTER/"
+    CC_DISCORD_ID=$(db_get_caster_discord_id $COCASTER)
+    SERVER_URL="rtmp://$FQDN:$(db_get_channel_port $CHANNEL)/$CASTER/"
+    CC_SERVER_URL="rtmp://$FQDN:$(db_get_channel_port "$CHANNEL-proxy")/$COCASTER/"
+    CONTAINER_NAME_PREFIX="nginx-rtmp"
+
+    if [[ "$CHANNEL" == *-proxy || "$CASE" == *_cc ]];
+    then
+        CONTAINER_NAME_PREFIX="nginx-rtmp-proxy"
+    fi
 
     if [ "$GAME" = "pubg" ];
     then
         WEBHOOK_URL=$DISCORD_WEBHOOK_PUBG
+        SUPPORT_GROUP="1087648929857941546"
     fi
 
     mkdir /tmp/$SESSION_ID
@@ -48,9 +62,14 @@ else
     export END_TIME="$END_TIME"
     export SHUTDOWN_TIME="$SHUTDOWN_TIME"
     export CASTER="$CASTER"
+    export COCASTER="$COCASTER"
     export DISCORD_ID="$DISCORD_ID"
+    export CC_DISCORD_ID="$CC_DISCORD_ID"
     export SERVER_URL="$SERVER_URL"
+    export CC_SERVER_URL="$CC_SERVER_URL"
     export MESSAGE="$MESSAGE"
+    export CONTAINER_NAME_PREFIX="$CONTAINER_NAME_PREFIX"
+    export SUPPORT_GROUP="$SUPPORT_GROUP"
 
     envsubst < /tmp/$SESSION_ID/$CASE.json.template > /tmp/$SESSION_ID/$CASE.json
 

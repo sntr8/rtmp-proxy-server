@@ -1,6 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 set -eu
-
-sh -c "/logo-switcher.sh"
 
 exec "$@"

@@ -16,8 +16,4 @@ fi
 
 ./tools/images/build_nginx-http.sh $VERSION $OPTS
 
-./tools/images/build_nginx-rtmp-base.sh $VERSION $OPTS
-
-./tools/images/build_nginx-rtmp-delayer.sh $VERSION $OPTS
-
-./tools/images/build_nginx-rtmp-proxy.sh $VERSION $OPTS
+./tools/images/build_nginx-rtmp.sh $VERSION $OPTS

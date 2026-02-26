@@ -1,0 +1,11 @@
+ALTER TABLE streams ADD cocaster_id varchar(255) AFTER caster_id;
+INSERT INTO channels (name, display_name, port) VALUES ('kanaliigatv1-proxy', 'Internal Proxy Channel', '48101');
+INSERT INTO channels (name, display_name, port) VALUES ('kanaliigatv2-proxy', 'Internal Proxy Channel', '48102');
+INSERT INTO channels (name, display_name, port) VALUES ('kanaliigatv3-proxy', 'Internal Proxy Channel', '48103');
+INSERT INTO channels (name, display_name, port) VALUES ('kanaliigabot-proxy', 'Internal Proxy Channel', '48104');
+UPDATE channels SET port = 48105, name = "only1-proxy" WHERE name = "proxy-only";
+UPDATE channels SET port = 48106, name = "only2-proxy" WHERE name = "proxy-only2";
+INSERT INTO channels (name, display_name, port) VALUES ('only3-proxy', 'Internal Proxy Channel 3', '48107');
+INSERT INTO channels (name, display_name, port) VALUES ('only4-proxy', 'Internal Proxy Channel 4', '48108');
+INSERT INTO channels (name, display_name, port) VALUES ('only5-proxy', 'Internal Proxy Channel 5', '48109');
+INSERT INTO channels (name, display_name, port) VALUES ('only6-proxy', 'Internal Proxy Channel 6', '48110');
