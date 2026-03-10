@@ -413,43 +413,62 @@ db_stream_is_live() {
     fi
 }
 
+# Validation functions - search for entities in database
 search_caster() {
-    CASTER=$1
+    local CASTER=$1
 
-    castermod --list "$CASTER" > /dev/null
-
-    CASTER_FOUND=$?
-
-    if [ "$CASTER_FOUND" -eq 1 ];
+    if [ -z "$CASTER" ];
     then
-        echo "[ERROR]: Caster $CASTER was not found from the database"
+        echo "[ERROR]: Caster name not provided"
         return 1
     fi
+
+    local CASTER_FOUND=$(mysql_exec_silent "SELECT nick FROM casters WHERE nick = '$CASTER' AND internal = false")
+
+    if [ -z "$CASTER_FOUND" ];
+    then
+        echo "[ERROR]: Caster '$CASTER' not found in database"
+        return 1
+    fi
+    return 0
 }
 
 search_channel() {
-    CHANNEL=$1
+    local CHANNEL=$1
 
-    CHANNEL_FOUND=$(mysql_exec_silent "SELECT name FROM channels WHERE name = '$CHANNEL'")
+    if [ -z "$CHANNEL" ];
+    then
+        echo "[ERROR]: Channel name not provided"
+        return 1
+    fi
+
+    local CHANNEL_FOUND=$(mysql_exec_silent "SELECT name FROM channels WHERE name = '$CHANNEL'")
 
     if [ -z "$CHANNEL_FOUND" ];
     then
-        echo "Channel $CHANNEL not found from the database"
+        echo "[ERROR]: Channel '$CHANNEL' not found in database"
         return 1
     fi
+    return 0
 }
 
 search_game() {
-    GAME=$1
+    local GAME=$1
 
-    gamemod --list "$GAME" > /dev/null
-    GAME_FOUND=$?
-
-    if [ $GAME_FOUND -eq 1 ];
+    if [ -z "$GAME" ];
     then
-        echo "[ERROR]: Game $GAME was not found from the database"
+        echo "[ERROR]: Game name not provided"
         return 1
     fi
+
+    local GAME_FOUND=$(mysql_exec_silent "SELECT name FROM games WHERE name = '$GAME'")
+
+    if [ -z "$GAME_FOUND" ];
+    then
+        echo "[ERROR]: Game '$GAME' not found in database"
+        return 1
+    fi
+    return 0
 }
 
 twitch_get_api_error() {
