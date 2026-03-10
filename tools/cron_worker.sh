@@ -1,7 +1,7 @@
 #!/bin/bash
 SOURCE_DIR="$(dirname "$0")"
 
-source $SOURCE_DIR/functions/functions.sh
+source "$SOURCE_DIR/functions/functions.sh"
 source /etc/profile
 
 echo "Run start time: $(date)"
@@ -50,7 +50,7 @@ do
         streammod --set live $ID
         echo "[$ID] Set to live"
 
-        if [ ! -z $COCASTER ];
+        if [ ! -z "$COCASTER" ];
         then
           CCPROXY="$CHANNEL-proxy"
           if MESSAGE=$(containermod --start --name nginx-rtmp --caster $COCASTER --channel $CCPROXY --proxy;)
@@ -86,7 +86,7 @@ do
     discordmod shutdown-warning $ID
     echo "[$ID] Sent shutdown-warning to Discord"
 
-    if [ ! -z $COCASTER ];
+    if [ ! -z "$COCASTER" ];
     then
       discordmod shutdown-warning_cc $ID
       echo "[$ID] Sent shutdown-warning_cc to Discord"
@@ -123,7 +123,7 @@ do
         echo "[$ID] Sent notification to Discord"
     fi
 
-    if [ ! -z $COCASTER ];
+    if [ ! -z "$COCASTER" ];
     then
       if MESSAGE=$(containermod --stop --name nginx-rtmp --caster $COCASTER --proxy;)
       then

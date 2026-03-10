@@ -125,7 +125,7 @@ validate_datetime() {
 db_get_caster_discord_id() {
     CASTER=$1
 
-    if [ -z $CASTER ];
+    if [ -z "$CASTER" ];
     then
         echo "Caster was not provided"
         return 1
@@ -138,7 +138,7 @@ db_get_caster_discord_id() {
 db_get_channel_access_token() {
     CHANNEL=$1
 
-    if [ -z $CHANNEL ];
+    if [ -z "$CHANNEL" ];
     then
         echo "Channel was not provided"
         return 1
@@ -151,7 +151,7 @@ db_get_channel_access_token() {
 db_get_channel_client_id() {
     CHANNEL=$1
 
-    if [ -z $CHANNEL ];
+    if [ -z "$CHANNEL" ];
     then
         echo "Channel was not provided"
         return 1
@@ -164,7 +164,7 @@ db_get_channel_client_id() {
 db_get_channel_refresh_token() {
     CHANNEL=$1
 
-    if [ -z $CHANNEL ];
+    if [ -z "$CHANNEL" ];
     then
         echo "Channel was not provided"
         return 1
@@ -177,7 +177,7 @@ db_get_channel_refresh_token() {
 db_get_channel_port() {
     CHANNEL=$1
 
-    if [ -z $CHANNEL ];
+    if [ -z "$CHANNEL" ];
     then
         echo "Channel was not provided"
         return 1
@@ -190,7 +190,7 @@ db_get_channel_port() {
 db_get_caster_with_stream_id() {
     STREAM=$1
 
-    if [ -z $STREAM ];
+    if [ -z "$STREAM" ];
     then
         echo "Stream ID was not provided"
         return 1
@@ -203,7 +203,7 @@ db_get_caster_with_stream_id() {
 db_get_channel_with_stream_id() {
     STREAM=$1
 
-    if [ -z $STREAM ];
+    if [ -z "$STREAM" ];
     then
         echo "Stream ID was not provided"
         return 1
@@ -216,7 +216,7 @@ db_get_channel_with_stream_id() {
 db_get_game_with_stream_id() {
     STREAM=$1
 
-    if [ -z $STREAM ];
+    if [ -z "$STREAM" ];
     then
         echo "Stream ID was not provided"
         return 1
@@ -229,7 +229,7 @@ db_get_game_with_stream_id() {
 db_get_caster_name_with_id() {
     CASTER=$1
 
-    if [ -z $CASTER ];
+    if [ -z "$CASTER" ];
     then
         echo "Caster ID was not provided"
         return 1
@@ -248,7 +248,7 @@ db_get_caster_name_with_id() {
 db_get_channel_name_with_id() {
     CHANNEL=$1
 
-    if [ -z $CHANNEL ];
+    if [ -z "$CHANNEL" ];
     then
         echo "Channel ID was not provided"
         return 1
@@ -323,7 +323,7 @@ db_get_game_display_name_with_name() {
 db_get_stream_end_time() {
     STREAM=$1
 
-    if [ -z $STREAM ];
+    if [ -z "$STREAM" ];
     then
         echo "Stream ID was not provided"
         return 1
@@ -336,7 +336,7 @@ db_get_stream_end_time() {
 db_get_stream_start_time() {
     STREAM=$1
 
-    if [ -z $STREAM ];
+    if [ -z "$STREAM" ];
     then
         echo "Stream ID was not provided"
         return 1
@@ -350,12 +350,12 @@ db_get_stream_shut_down_time() {
     STREAM=$1
     INTERVAL=$2
 
-    if [ -z $STREAM ];
+    if [ -z "$STREAM" ];
     then
         echo "Stream ID was not provided"
         return 1
     else
-        if [ -z $INTERVAL ];
+        if [ -z "$INTERVAL" ];
         then
             INTERVAL="$CONTAINER_BUFFER_MINUTES"
         fi
@@ -368,7 +368,7 @@ db_get_stream_shut_down_time() {
 db_get_stream_title() {
     STREAM=$1
 
-    if [ -z $STREAM ];
+    if [ -z "$STREAM" ];
     then
         echo "Stream ID was not provided"
         return 1
@@ -383,12 +383,12 @@ db_is_channel_free() {
     ID=$2
     EXCLUDE=$3
 
-    if [[ -z $TIME || -z $ID ]];
+    if [[ -z "$TIME" || -z "$ID" ]];
     then
         echo "Channel ID or time was not provided"
         return 1
     else
-        if [ ! -z $EXCLUDE ];
+        if [ ! -z "$EXCLUDE" ];
         then
             COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE STR_TO_DATE('$TIME','%d.%m.%Y %T') BETWEEN start_time AND end_time AND channel_id = '$ID' AND id != '$EXCLUDE'")
         else
@@ -409,13 +409,13 @@ db_set_channel_access_token() {
     CHANNEL=$1
     TOKEN=$2
 
-    if [ -z $CHANNEL ];
+    if [ -z "$CHANNEL" ];
     then
         echo "A channel was not provided"
         return 1
     fi
 
-    if [ -z $TOKEN ];
+    if [ -z "$TOKEN" ];
     then
         echo "A token was not provided"
         return 1
@@ -436,12 +436,12 @@ db_stream_collides_with_another() {
     END_TIME=$3
     EXCLUDE=$4
 
-    if [[ -z $START_TIME || -z $END_TIME || -z $ID ]];
+    if [[ -z "$START_TIME" || -z "$END_TIME" || -z "$ID" ]];
     then
         echo "Channel ID or time was not provided"
         return 1
     else
-        if [ ! -z $EXCLUDE ];
+        if [ ! -z "$EXCLUDE" ];
         then
             COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE (start_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T') or end_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T')) AND channel_id = '$ID' AND id != '$EXCLUDE';")
         else
@@ -565,7 +565,7 @@ search_game() {
 twitch_get_api_error() {
     CHANNEL=$1
 
-    if [ -z $CHANNEL ];
+    if [ -z "$CHANNEL" ];
     then
         echo "Channel was not provided"
         return 1
@@ -619,7 +619,7 @@ twitch_get_game_id_with_display_name() {
 twitch_get_stream_key() {
     CHANNEL=$1
 
-    if [ -z $CHANNEL ];
+    if [ -z "$CHANNEL" ];
     then
         echo "Channel was not provided"
         return 1

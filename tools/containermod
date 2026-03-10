@@ -1,7 +1,7 @@
 #!/bin/bash
 SOURCE_DIR="$(dirname "$0")"
 
-source $SOURCE_DIR/functions/functions.sh
+source "$SOURCE_DIR/functions/functions.sh"
 source /etc/profile
 
 # Configuration paths
@@ -118,7 +118,7 @@ check_stream_container_lock() {
 check_running() {
     RUNNING_CONTAINER=$1
     OLD=$(docker ps -aqf "name=$RUNNING_CONTAINER")
-    if [ ! -z $OLD ];
+    if [ ! -z "$OLD" ];
     then
         return 1
     fi
@@ -498,7 +498,7 @@ fi
 
 require_operation "$OPERATION"
 
-if [ ! -z $CHANNEL ];
+if [ ! -z "$CHANNEL" ];
 then
     if [[ "$CHANNEL" == *-proxy ]];
     then

@@ -1,7 +1,7 @@
 #!/bin/bash
 SOURCE_DIR="$(dirname "$0")"
 
-source $SOURCE_DIR/functions/functions.sh
+source "$SOURCE_DIR/functions/functions.sh"
 source /etc/profile
 
 SCRIPT_NAME=$SCRIPT_NAME
@@ -119,7 +119,7 @@ case $OPERATION in
     Twitch title: $TITLE
     Start time: $START_TIME_MYSQL
     End time: $END_TIME_MYSQL"
-        if [ ! -z $COCASTER ];
+        if [ ! -z "$COCASTER" ];
         then
             echo "    Also adding proxy container for co-caster: $(db_get_caster_name_with_id $COCASTER)"
         fi
@@ -129,11 +129,12 @@ case $OPERATION in
         read -r -p "Are you sure you want to create a new stream with above details? [y/N] " RESPONSE
         case "$RESPONSE" in
             [yY][eE][sS]|[yY])
-                if [ ! -z $COCASTER ];
+                SAFE_TITLE=$(sanitize_sql_string "$TITLE")
+                if [ ! -z "$COCASTER" ];
                 then
-                  mysql_exec "INSERT INTO streams (\`caster_id\`, \`cocaster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $COCASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
+                  mysql_exec "INSERT INTO streams (\`caster_id\`, \`cocaster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $COCASTER, $CHANNEL, $GAME, '$SAFE_TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
                 else
-                  mysql_exec "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
+                  mysql_exec "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, $GAME, '$SAFE_TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
                 fi
                 if [ $? -eq 0 ];
                 then
@@ -340,7 +341,7 @@ case $OPERATION in
 
         printf "\n"
 
-        if [ ! -z $COCASTER ];
+        if [ ! -z "$COCASTER" ];
         then
             echo "Stream has a co-caster container for: $COCASTER"
             read -r -p "Want to change the co-caster container?
@@ -402,8 +403,9 @@ No changes: N
         case "$RESPONSE_TITLE" in
             [yY][eE][sS]|[yY])
                 read -r -p "Twitch title for the stream?: " EDIT_TITLE
+                SAFE_EDIT_TITLE=$(sanitize_sql_string "$EDIT_TITLE")
 
-                mysql_exec_silent "UPDATE streams SET title = '$EDIT_TITLE' WHERE id = $STREAM_ID"
+                mysql_exec_silent "UPDATE streams SET title = '$SAFE_EDIT_TITLE' WHERE id = $STREAM_ID"
                 echo "Updated to the database"
             ;;
         esac
