@@ -11,19 +11,19 @@ RUN apk add --update-cache \
     wget \
     zlib-dev \
     && \
-
+    \
     mkdir -p /tmp/build/nginx && \
     cd /tmp/build/nginx && \
     wget -O ${NGINX_VERSION}.tar.gz https://nginx.org/download/${NGINX_VERSION}.tar.gz && \
     tar -zxf ${NGINX_VERSION}.tar.gz \
     && \
-
+    \
     mkdir -p /tmp/build/nginx-rtmp-module && \
     cd /tmp/build/nginx-rtmp-module && \
     git clone https://github.com/arut/nginx-rtmp-module.git . && \
     git checkout --detach ${NGINX_RTMP_MODULE_COMMIT} \
     && \
-
+    \
     cd /tmp/build/nginx/${NGINX_VERSION} && \
     ./configure \
         --prefix=/opt/nginx \
@@ -69,15 +69,15 @@ RUN apk add \
         && \
     rm -rf /var/cache/apk/* \
     && \
-
+    \
     cd /usr/local/bin && \
     ln -s /usr/bin/python3 python \
     && \
-
+    \
     ln -sf /dev/stdout /opt/nginx/logs/access.log && \
     ln -sf /dev/stderr /opt/nginx/logs/error.log \
     && \
-
+    \
     chmod +x /entrypoint.sh && \
     chmod +x /run-delayer.sh && \
     chmod +x /ffmpeg-logs-to-docker.sh
