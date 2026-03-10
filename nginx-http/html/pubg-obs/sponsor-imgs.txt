@@ -1,5 +1,0 @@
-./img/studio-sponsors/main_ajaton.png
-./img/studio-sponsors/main_atflow.png
-./img/studio-sponsors/tnnet-white.png
-./img/studio-sponsors/nitor.png
-./img/studio-sponsors/kanastats.png

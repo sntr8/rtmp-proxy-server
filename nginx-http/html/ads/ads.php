@@ -11,7 +11,6 @@
         }
     ?>
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.css"/>
 </head>
 <body>
     <div class="carousel">
@@ -40,13 +39,10 @@
         shuffle($ads);
 
         foreach ($ads as $ad) {
-            echo "<div><img src=".$ad." /></div>";
+            echo "<div class=\"carousel-slide\"><img src=".$ad." /></div>";
         }
     ?>
     </div>
-    <script type="text/javascript" src="//code.jquery.com/jquery-1.11.0.min.js"></script>
-    <script type="text/javascript" src="//code.jquery.com/jquery-migrate-1.2.1.min.js"></script>
     <script type="text/javascript" src="carousel.js"></script>
-    <script type="text/javascript" src="//cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.min.js"></script>
 </body>
 </html>
