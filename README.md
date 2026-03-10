@@ -111,11 +111,26 @@ Contributions welcome! Please:
 
 ## License
 
-This project is licensed under the **PolyForm Noncommercial License 1.0.0**.
+Copyright (c) 2026 sntr8
+
+**This project's original code** (shell scripts, configurations, Dockerfiles, and custom applications) is licensed under the **PolyForm Noncommercial License 1.0.0**.
 
 You are free to use, modify, and share this software for noncommercial purposes (personal projects, academic research, hobbyist communities). Commercial use is prohibited.
 
 See the [LICENSE](LICENSE) file or visit [polyformproject.org/licenses/noncommercial/1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/).
+
+### Third-Party Components
+
+This project uses the following open-source software in Docker images:
+
+- **nginx** - BSD-2-Clause License ([nginx.org/LICENSE](https://nginx.org/LICENSE))
+- **nginx-rtmp-module** - BSD-2-Clause License ([GitHub](https://github.com/arut/nginx-rtmp-module))
+- **HAProxy** - GPL v2 ([haproxy.org](https://www.haproxy.org/))
+- **MySQL** - GPL v2 ([mysql.com](https://www.mysql.com/))
+- **PHP** - PHP License v3.01 ([php.net/license](https://www.php.net/license/3_01.txt))
+- **Alpine Linux** - Various licenses ([alpinelinux.org/about](https://alpinelinux.org/about))
+
+Each component retains its original license. The project's code works with these components but does not modify or redistribute their source code.
 
 ## Credits
 
