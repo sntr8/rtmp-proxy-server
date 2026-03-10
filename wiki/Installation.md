@@ -141,6 +141,9 @@ The system uses custom Docker images for each component.
 ```bash
 cd tools
 ./build_all_images.sh v1.6
+
+# Optional: Set custom timezone (defaults to UTC)
+./build_all_images.sh v1.6 "--build-arg TZ=Europe/Helsinki"
 ```
 
 **What this does:**
@@ -148,7 +151,9 @@ cd tools
 - Tags images with version number
 - Pushes to your container registry (GitLab by default)
 
-**Note:** If not using GitLab registry, edit `build_all_images.sh` to change the registry URL.
+**Notes:**
+- If not using GitLab registry, edit `build_all_images.sh` to change the registry URL
+- Containers default to UTC timezone. See [Building Images](Building-Images.md#configuring-timezone) for timezone options
 
 ### Step 4: Initialize Database
 

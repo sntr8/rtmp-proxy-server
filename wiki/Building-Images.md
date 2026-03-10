@@ -134,6 +134,25 @@ Common options:
 - `--pull` - Always pull base images
 - `--platform linux/amd64` - Specific platform
 
+### Configuring Timezone
+
+All containers default to UTC timezone. Override with `--build-arg TZ`:
+
+```bash
+# Use Europe/Helsinki timezone
+./build_all_images.sh v1.6 "--build-arg TZ=Europe/Helsinki"
+
+# Use builder's current timezone
+./build_all_images.sh v1.6 "--build-arg TZ=$(cat /etc/timezone)"
+
+# Or with additional options
+./build_all_images.sh v1.6 "--no-cache --build-arg TZ=America/New_York"
+```
+
+**Supported timezones:** Any valid IANA timezone (e.g., `America/New_York`, `Asia/Tokyo`, `Europe/London`)
+
+**Note:** Timezone is set at build time. Changing timezone requires rebuilding images.
+
 ## Building Individual Components
 
 Build one component at a time:

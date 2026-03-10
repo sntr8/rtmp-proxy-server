@@ -1,5 +1,6 @@
 FROM mysql:8.0-debian
-ENV TZ="Europe/Helsinki"
+ARG TZ=UTC
+ENV TZ=${TZ}
 
 RUN apt-get update && apt-get install -y \
     gettext-base  && \

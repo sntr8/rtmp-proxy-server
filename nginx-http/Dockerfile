@@ -1,5 +1,6 @@
 FROM nginx:1.23.3-alpine
-ENV TZ="Europe/Helsinki"
+ARG TZ=UTC
+ENV TZ=${TZ}
 
 COPY html /usr/share/nginx/html
 COPY conf/nginx.conf.template /etc/nginx/nginx.conf.template

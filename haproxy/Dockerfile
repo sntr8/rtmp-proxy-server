@@ -1,7 +1,8 @@
 FROM haproxy:2.4-alpine
 USER root
 
-ENV TZ="Europe/Helsinki"
+ARG TZ=UTC
+ENV TZ=${TZ}
 
 COPY scripts/docker-entrypoint.sh /docker-entrypoint.sh
 

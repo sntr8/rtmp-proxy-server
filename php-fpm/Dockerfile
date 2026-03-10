@@ -1,6 +1,7 @@
 FROM php:fpm-alpine3.17
 
-ENV TZ="Europe/Helsinki"
+ARG TZ=UTC
+ENV TZ=${TZ}
 
 RUN docker-php-ext-install mysqli && \
     mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" && \

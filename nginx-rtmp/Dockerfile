@@ -50,7 +50,8 @@ RUN chmod +x /opt/rtmp/stream_delayer.py
 
 FROM alpine:3.17 AS nginx-rtmp
 
-ENV TZ="Europe/Helsinki"
+ARG TZ=UTC
+ENV TZ=${TZ}
 
 ENV PROXY_ONLY false
 ENV PATH="${PATH}:/opt/nginx/sbin"
