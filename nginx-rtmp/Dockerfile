@@ -1,6 +1,6 @@
-FROM alpine:3.17 AS nginx-rtmp-builder
+FROM alpine:3.23 AS nginx-rtmp-builder
 
-ENV NGINX_VERSION nginx-1.23.3
+ENV NGINX_VERSION nginx-1.28.2
 ENV NGINX_RTMP_MODULE_COMMIT 23e1873aa62acb58b7881eed2a501f5bf35b82e9
 
 RUN apk add --update-cache \
@@ -48,7 +48,7 @@ RUN mkdir -p /opt/rtmp/workdir && \
 COPY rtmp_stream_delayer/stream_delayer.py /opt/rtmp/
 RUN chmod +x /opt/rtmp/stream_delayer.py
 
-FROM alpine:3.17 AS nginx-rtmp
+FROM alpine:3.23 AS nginx-rtmp
 
 ARG TZ=UTC
 ENV TZ=${TZ}

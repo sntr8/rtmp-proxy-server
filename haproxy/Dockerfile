@@ -1,4 +1,4 @@
-FROM haproxy:2.4-alpine
+FROM haproxy:2.6-alpine
 USER root
 
 ARG TZ=UTC

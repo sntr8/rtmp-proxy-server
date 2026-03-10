@@ -1,4 +1,4 @@
-FROM php:fpm-alpine3.17
+FROM php:fpm-alpine3.23
 
 ARG TZ=UTC
 ENV TZ=${TZ}

@@ -1,4 +1,4 @@
-FROM nginx:1.23.3-alpine
+FROM nginx:1.28-alpine
 ARG TZ=UTC
 ENV TZ=${TZ}
 
