@@ -78,7 +78,7 @@ case $OPERATION in
             exit 1
         fi
 
-        echo "Container will be started 30 minutes before the stream, if possible."
+        echo "Container will be started $CONTAINER_BUFFER_MINUTES minutes before the stream, if possible."
 
         read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM): " END_TIME
 
@@ -107,7 +107,7 @@ case $OPERATION in
             exit 1
         fi
 
-        echo "Container will be stopped 30 minutes after the stream, if possible."
+        echo "Container will be stopped $CONTAINER_BUFFER_MINUTES minutes after the stream, if possible."
 
         printf "\n\n"
 
@@ -174,7 +174,7 @@ case $OPERATION in
             exit 1
         fi
 
-        echo "Container will be started 30 minutes before the stream, if possible."
+        echo "Container will be started $CONTAINER_BUFFER_MINUTES minutes before the stream, if possible."
 
         read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM): " END_TIME
 
@@ -191,7 +191,7 @@ case $OPERATION in
             exit 1
         fi
 
-        echo "Container will be stopped 30 minutes after the stream, if possible."
+        echo "Container will be stopped $CONTAINER_BUFFER_MINUTES minutes after the stream, if possible."
 
         PROXY_COUNT=$(db_get_proxychannel_count)
         PROXY_CHANNEL=""
@@ -226,7 +226,7 @@ case $OPERATION in
         read -r -p "Are you sure you want to create a proxy server with above details? [y/N] " RESPONSE
         case "$RESPONSE" in
             [yY][eE][sS]|[yY])
-                docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $PROXY_CHANNEL_ID, false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
+                mysql_exec "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $PROXY_CHANNEL_ID, false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
                 if [ $? -eq 0 ];
                 then
                     exit 0
@@ -505,11 +505,11 @@ No changes: N
 
             case $OPTION in
                 "live")
-                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE streams SET live = true WHERE id = $ID"
+                    mysql_exec "UPDATE streams SET live = true WHERE id = $ID"
                     exit 0
                 ;;
                 "nonlive")
-                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE streams SET live = false WHERE id = $ID"
+                    mysql_exec "UPDATE streams SET live = false WHERE id = $ID"
                     exit 0
                 ;;
             esac
@@ -520,14 +520,14 @@ No changes: N
         if [ -z $OPTION ];
         then
             echo "Starting streams:"
-            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) ORDER BY start_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) ORDER BY start_time"
             echo "Starting proxies:"
-            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, s.start_time, s.end_time FROM casters ca, channels ch, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) ORDER BY start_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, s.start_time, s.end_time FROM casters ca, channels ch, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) ORDER BY start_time"
             exit 0
         else
             case $OPTION in
                 "--ids")
-                    mysql_exec_silent "SELECT id FROM streams WHERE start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) AND skip = false"
+                    mysql_exec_silent "SELECT id FROM streams WHERE start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) AND skip = false"
                     exit 0
                 ;;
                 *)
@@ -541,12 +541,12 @@ No changes: N
         OPTION=$2
         if [ -z $OPTION ];
         then
-            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND end_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) ORDER BY end_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND end_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) ORDER BY end_time"
             exit 0
         else
             case $OPTION in
                 "--ids")
-                    mysql_exec_silent "SELECT id FROM streams WHERE end_time BETWEEN DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND DATE_ADD(NOW(), INTERVAL 30 MINUTE)"
+                    mysql_exec_silent "SELECT id FROM streams WHERE end_time BETWEEN DATE_SUB(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE)"
                     exit 0
                 ;;
                 *)
@@ -586,7 +586,7 @@ No changes: N
             exit 1
         fi
 
-        mysql_exec_silent "UPDATE streams SET end_time = DATE_ADD(end_time, INTERVAL 30 MINUTE) WHERE id = '$OPTION'"
+        mysql_exec_silent "UPDATE streams SET end_time = DATE_ADD(end_time, INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) WHERE id = '$OPTION'"
     ;;
     "--skip")
         OPTION=$2
@@ -632,7 +632,7 @@ USER OPERATIONS:
 
     Usage: $(basename "$0") --add
 
-    Note: Containers start 30 min before and stop 30 min after scheduled time.
+    Note: Containers start $CONTAINER_BUFFER_MINUTES min before and stop $CONTAINER_BUFFER_MINUTES min after scheduled time.
 
   --add-proxy
     Interactive tool to schedule a proxy-only container (no Twitch stream).
@@ -653,13 +653,13 @@ USER OPERATIONS:
     Usage: $(basename "$0") --live --ids        (returns only IDs)
 
   --ending
-    List streams ending within 30 minutes.
+    List streams ending within $CONTAINER_BUFFER_MINUTES minutes.
 
     Usage: $(basename "$0") --ending
     Usage: $(basename "$0") --ending --ids      (returns only IDs)
 
   --extend <stream_id>
-    Extend a stream's end time by 30 minutes.
+    Extend a stream's end time by $CONTAINER_BUFFER_MINUTES minutes.
 
     Usage: $(basename "$0") --extend 42
 
@@ -691,7 +691,7 @@ USER OPERATIONS:
 INTERNAL OPERATIONS (used by cron_worker.sh):
 
   --starting [--ids]
-    List streams starting within 30 minutes.
+    List streams starting within $CONTAINER_BUFFER_MINUTES minutes.
 
   --ended <minutes>
     List streams that ended <minutes> ago and still have containers running.
@@ -723,7 +723,7 @@ NOTES:
   - Always schedule streams in advance for automatic container management
   - Stream collisions are NOT automatically checked - verify manually with --upcoming
   - Time format: DD.MM.YYYY HH:MM (EU, e.g., 15.03.2026 19:30) or MM/DD/YYYY HH:MM (US, e.g., 03/15/2026 19:30)
-  - Containers start 30 minutes before and stop 30 minutes after scheduled times
+  - Containers start $CONTAINER_BUFFER_MINUTES minutes before and stop $CONTAINER_BUFFER_MINUTES minutes after scheduled times
 "
     exit 0
 

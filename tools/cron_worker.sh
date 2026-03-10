@@ -77,7 +77,7 @@ do
 done
 
 echo "Getting warnings"
-streammod --warnings 15 | while read ID;
+streammod --warnings $SHUTDOWN_WARNING_MINUTES | while read ID;
 do
     ID=${ID%$'\r'}
     echo "[$ID] Staring processing"
@@ -97,7 +97,7 @@ do
 done
 
 echo "Getting shutdowns"
-streammod --ended 30 | while read ID;
+streammod --ended $CONTAINER_BUFFER_MINUTES | while read ID;
 do
     ID=${ID%$'\r'}
     echo "[$ID] Staring processing"

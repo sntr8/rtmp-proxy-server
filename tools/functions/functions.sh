@@ -2,6 +2,10 @@
 
 source /etc/profile
 
+# Configuration constants
+readonly CONTAINER_BUFFER_MINUTES=30      # Minutes before/after stream for container start/stop
+readonly SHUTDOWN_WARNING_MINUTES=15      # Minutes before end to send shutdown warning
+
 # MySQL wrapper functions to reduce code duplication
 mysql_container_id() {
     docker ps -aqf "name=mysql"
@@ -329,7 +333,7 @@ db_get_stream_shut_down_time() {
     else
         if [ -z $INTERVAL ];
         then
-            INTERVAL="30"
+            INTERVAL="$CONTAINER_BUFFER_MINUTES"
         fi
 
         END_TIME=$(mysql_exec_silent "SELECT DATE_ADD(end_time, INTERVAL $INTERVAL MINUTE) FROM streams WHERE id = '$STREAM'")

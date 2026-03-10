@@ -75,7 +75,7 @@ else
     COCASTER=$(db_get_cocaster_name_with_stream_id $STREAM_ID)
     GAME=$(db_get_game_with_stream_id $STREAM_ID)
     END_TIME=$(db_get_stream_end_time $STREAM_ID)
-    SHUTDOWN_TIME=$(db_get_stream_shut_down_time $STREAM_ID "30")
+    SHUTDOWN_TIME=$(db_get_stream_shut_down_time $STREAM_ID "$CONTAINER_BUFFER_MINUTES")
     DISCORD_ID=$(db_get_caster_discord_id $CASTER)
     CC_DISCORD_ID=$(db_get_caster_discord_id $COCASTER)
     SERVER_URL="rtmp://$FQDN:$(db_get_channel_port $CHANNEL)/$CASTER/"

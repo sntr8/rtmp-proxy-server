@@ -37,7 +37,7 @@ case $OPERATION in
             exit 1
         fi
 
-        docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT id FROM channels WHERE name = '$CHANNEL_NAME'"
+        mysql_exec_silent "SELECT id FROM channels WHERE name = '$CHANNEL_NAME'"
         exit 0
     ;;
     "--refresh-tokens")

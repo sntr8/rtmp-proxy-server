@@ -50,7 +50,7 @@ case $OPERATION in
                 exit 0
             ;;
             *)
-                OUTPUT=$(docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT name FROM games WHERE name = '$OPTION'")
+                OUTPUT=$(mysql_exec_silent "SELECT name FROM games WHERE name = '$OPTION'")
 
                 if [[ ! -z $OUTPUT ]];
                 then

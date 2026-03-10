@@ -81,7 +81,7 @@ case $OPERATION in
                 exit 0
             ;;
             *)
-                OUTPUT=$(docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT nick, stream_key, CASE WHEN active = false THEN 'disabled' ELSE 'active' END as active, date_added FROM casters WHERE nick = '$OPTION' AND internal = false")
+                OUTPUT=$(mysql_exec_silent "SELECT nick, stream_key, CASE WHEN active = false THEN 'disabled' ELSE 'active' END as active, date_added FROM casters WHERE nick = '$OPTION' AND internal = false")
 
                 if [[ ! -z "$OUTPUT" ]];
                 then
