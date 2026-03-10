@@ -575,10 +575,10 @@ docker exec nginx-rtmp-<CASTER> cat /etc/nginx/nginx.conf | grep exec_push
 
 **Pitäisi näyttää tältä:**
 ```
-exec_push ffmpeg ... rtmp://osl.contribute.live-video.net/app/live_XXXXXXXXXXX;
+exec_push ffmpeg ... rtmp://live.twitch.tv/app/live_XXXXXXXXXXX;
 ```
 
-(Palvelin `osl` voi olla myös `hel`, `cph` tai `arn` – Twitchin ingest-serveri).
+(Järjestelmä käyttää Twitchin automaattista reititystä `live.twitch.tv`, joka ohjaa liikenteen lähimpään palvelimeen).
 
 **Jos näkyy `Null` lähetysavaimen paikalla:**
 
