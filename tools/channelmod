@@ -4,6 +4,7 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+SCRIPT_NAME=$SCRIPT_NAME
 OPERATION=$1
 require_operation "$OPERATION"
 
@@ -24,7 +25,7 @@ case $OPERATION in
                 exit 0
             ;;
             *)
-                echo "Option $OPTION not recognised. Try '$(basename "$0") --help' for more information."
+                echo "Option $OPTION not recognised. Try '$SCRIPT_NAME --help' for more information."
             ;;
         esac
     ;;
@@ -37,6 +38,12 @@ case $OPERATION in
             exit 1
         fi
 
+        if ! validate_alphanumeric "$CHANNEL_NAME";
+        then
+            echo "[ERROR]: Invalid channel name. Only alphanumeric characters, dash, and underscore allowed."
+            exit 1
+        fi
+
         mysql_exec_silent "SELECT id FROM channels WHERE name = '$CHANNEL_NAME'"
         exit 0
     ;;
@@ -45,7 +52,7 @@ case $OPERATION in
 
         if [ -z "$CHANNEL" ];
         then
-            echo "Channel was not given. Try '$(basename "$0") --help' for more information."
+            echo "Channel was not given. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
@@ -70,7 +77,7 @@ case $OPERATION in
 
         if [ -z "$CHANNEL" ];
         then
-            echo "Channel was not given. Try '$(basename "$0") --help' for more information."
+            echo "Channel was not given. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
@@ -79,21 +86,30 @@ case $OPERATION in
             exit 1
         fi
 
+        if ! validate_alphanumeric "$CHANNEL";
+        then
+            echo "[ERROR]: Invalid channel name. Only alphanumeric characters, dash, and underscore allowed."
+            exit 1
+        fi
+
         if [ -z "$KEY" ];
         then
-            echo "Key-value pair was not given. Try '$(basename "$0") --help' for more information."
+            echo "Key-value pair was not given. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
         if [ -z "$VALUE" ];
         then
-            echo "Key-value pair was not given. Try '$(basename "$0") --help' for more information."
+            echo "Key-value pair was not given. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
+        # Sanitize VALUE to prevent SQL injection
+        SAFE_VALUE=$(sanitize_sql_string "$VALUE")
+
         case $KEY in
             "access_token")
-                if mysql_exec "UPDATE channels SET access_token = '$VALUE' WHERE name = '$CHANNEL'";
+                if mysql_exec "UPDATE channels SET access_token = '$SAFE_VALUE' WHERE name = '$CHANNEL'";
                 then
                     echo "Access token updated for channel $CHANNEL"
                     exit 0
@@ -102,7 +118,7 @@ case $OPERATION in
                 fi
             ;;
             "client_id")
-                if mysql_exec "UPDATE channels SET client_id = '$VALUE' WHERE name = '$CHANNEL'";
+                if mysql_exec "UPDATE channels SET client_id = '$SAFE_VALUE' WHERE name = '$CHANNEL'";
                 then
                     echo "Client ID updated for channel $CHANNEL"
                     exit 0
@@ -111,7 +127,7 @@ case $OPERATION in
                 fi
             ;;
             "refresh_token")
-                if mysql_exec "UPDATE channels SET refresh_token = '$VALUE' WHERE name = '$CHANNEL'";
+                if mysql_exec "UPDATE channels SET refresh_token = '$SAFE_VALUE' WHERE name = '$CHANNEL'";
                 then
                     echo "Refresh token updated for channel $CHANNEL"
                     exit 0
@@ -130,7 +146,7 @@ case $OPERATION in
 
         if [ -z "$CHANNEL" ];
         then
-            echo "Channel was not given. Try '$(basename "$0") --help' for more information."
+            echo "Channel was not given. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
@@ -156,7 +172,7 @@ case $OPERATION in
 
         if [ -z "$CHANNEL" ];
         then
-            echo "Channel was not given. Try '$(basename "$0") --help' for more information."
+            echo "Channel was not given. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
@@ -167,7 +183,7 @@ case $OPERATION in
 
         if [ -z "$KEY" ];
         then
-            echo "Key was not given. Try '$(basename "$0") --help' for more information."
+            echo "Key was not given. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
@@ -183,7 +199,7 @@ case $OPERATION in
         esac
     ;;
     "--help")
-        echo "$(basename "$0") -- Manage Twitch channels and API tokens
+        echo "$SCRIPT_NAME -- Manage Twitch channels and API tokens
 
 DESCRIPTION:
   Manage Twitch channel configurations, including API tokens for stream key fetching
@@ -191,22 +207,22 @@ DESCRIPTION:
   proxy channels.
 
 USAGE:
-  $(basename "$0") <operation> [parameters]
+  $SCRIPT_NAME <operation> [parameters]
 
 OPERATIONS:
 
   --list [option]
     List available channels in the database.
 
-    Usage: $(basename "$0") --list            (show Twitch channel names)
-    Usage: $(basename "$0") --list --ids      (show IDs and names)
+    Usage: $SCRIPT_NAME --list            (show Twitch channel names)
+    Usage: $SCRIPT_NAME --list --ids      (show IDs and names)
 
     Note: Only lists channels with access_token (excludes proxy-only channels)
 
   --get-id <channel_name>
     Get the database ID for a specific channel.
 
-    Usage: $(basename "$0") --get-id yourchannel
+    Usage: $SCRIPT_NAME --get-id yourchannel
 
     Returns: Channel ID number
 
@@ -217,7 +233,7 @@ OPERATIONS:
       - channel: Channel name (e.g., yourchannel)
       - key:     Database field name (currently only 'refresh_token' supported)
 
-    Usage: $(basename "$0") --get yourchannel refresh_token
+    Usage: $SCRIPT_NAME --get yourchannel refresh_token
 
   --set <channel> <key> <value>
     Update a specific value in the database for a channel.
@@ -227,22 +243,22 @@ OPERATIONS:
       - key:     Field to update (access_token, client_id, or refresh_token)
       - value:   New value for the field
 
-    Usage: $(basename "$0") --set yourchannel access_token abc123xyz789
-    Usage: $(basename "$0") --set yourchannel client_id gp762nuuoqcoxypju8c569th9wz7q5
-    Usage: $(basename "$0") --set yourchannel refresh_token def456uvw012
+    Usage: $SCRIPT_NAME --set yourchannel access_token abc123xyz789
+    Usage: $SCRIPT_NAME --set yourchannel client_id gp762nuuoqcoxypju8c569th9wz7q5
+    Usage: $SCRIPT_NAME --set yourchannel refresh_token def456uvw012
 
   --refresh-tokens <channel>
     Manually trigger Twitch token refresh using twitchtokengenerator.com API.
     Uses the channel's refresh_token to obtain a new access_token.
 
-    Usage: $(basename "$0") --refresh-tokens yourchannel
+    Usage: $SCRIPT_NAME --refresh-tokens yourchannel
 
     Note: Tokens expire after 60 days. System attempts auto-refresh when needed.
 
   --test-tokens <channel>
     Validate that a channel's Twitch API tokens are currently valid.
 
-    Usage: $(basename "$0") --test-tokens yourchannel
+    Usage: $SCRIPT_NAME --test-tokens yourchannel
 
     Returns: Exit 0 if valid, exit 1 if invalid
 
@@ -287,7 +303,7 @@ NOTES:
         exit 0
     ;;
     *)
-        echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+        echo "Option $OPERATION not recognised. Try '$SCRIPT_NAME --help' for more information"
         exit 1
     ;;
 esac

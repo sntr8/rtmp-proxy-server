@@ -4,6 +4,7 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+SCRIPT_NAME=$SCRIPT_NAME
 OPERATION=$1
 # Accept both EU (DD.MM.YYYY HH:MM) and US (MM/DD/YYYY HH:MM) formats
 REGEXP_EU='^([0-2][0-9]|3[0-1])\.(0[1-9]|1[0-2])\.[0-9]{4}\s([01]?[0-9]|2[0-3]):[0-5][0-9]$'
@@ -278,7 +279,7 @@ case $OPERATION in
         STREAM_ID=$2
         if [ -z "$STREAM_ID" ];
         then
-            echo "Stream id was not given. Try '$(basename "$0") --help' for more information."
+            echo "Stream id was not given. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
@@ -493,13 +494,13 @@ No changes: N
         OPTION=$2
         if [ -z "$OPTION" ];
         then
-            echo "No option was provided. Try '$(basename "$0") --help' for more information."
+            echo "No option was provided. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         else
             ID=$3
             if [ -z "$ID" ];
             then
-                echo "No Stream ID was provided. Try '$(basename "$0") --help' for more information."
+                echo "No Stream ID was provided. Try '$SCRIPT_NAME --help' for more information."
                 exit 1
             fi
 
@@ -531,7 +532,7 @@ No changes: N
                     exit 0
                 ;;
                 *)
-                    echo "Option not recognised. Try '$(basename "$0") --help' for more information."
+                    echo "Option not recognised. Try '$SCRIPT_NAME --help' for more information."
                     exit 1
                 ;;
             esac
@@ -550,7 +551,7 @@ No changes: N
                     exit 0
                 ;;
                 *)
-                    echo "Option not recognised. Try '$(basename "$0") --help' for more information."
+                    echo "Option not recognised. Try '$SCRIPT_NAME --help' for more information."
                     exit 1
                 ;;
             esac
@@ -560,7 +561,7 @@ No changes: N
         OPTION=$2
         if [ -z "$OPTION" ];
         then
-            echo "Warning time not set. Try '$(basename "$0") --help' for more information."
+            echo "Warning time not set. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         else
             mysql_exec_silent "SELECT id FROM streams WHERE DATE_FORMAT(DATE_ADD(NOW(), INTERVAL $OPTION MINUTE), '%d.%m.%Y %H:%i') = DATE_FORMAT(end_time, '%d.%m.%Y %H:%i')"
@@ -571,7 +572,7 @@ No changes: N
         OPTION=$2
         if [ -z "$OPTION" ];
         then
-            echo "Warning time not set. Try '$(basename "$0") --help' for more information."
+            echo "Warning time not set. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         else
             mysql_exec_silent "SELECT id FROM streams WHERE DATE_FORMAT(DATE_SUB(NOW(), INTERVAL $OPTION MINUTE), '%d.%m.%Y %H:%i') = DATE_FORMAT(end_time, '%d.%m.%Y %H:%i')"
@@ -582,7 +583,7 @@ No changes: N
         OPTION=$2
         if [ -z "$OPTION" ];
         then
-            echo "Stream id was not given. Try '$(basename "$0") --help' for more information."
+            echo "Stream id was not given. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
@@ -592,7 +593,7 @@ No changes: N
         OPTION=$2
         if [ -z "$OPTION" ];
         then
-            echo "Stream id was not given. Try '$(basename "$0") --help' for more information."
+            echo "Stream id was not given. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
@@ -602,21 +603,21 @@ No changes: N
         OPTION=$2
         if [ -z "$OPTION" ];
         then
-            echo "Stream id was not given. Try '$(basename "$0") --help' for more information."
+            echo "Stream id was not given. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
         mysql_exec_silent "UPDATE streams SET skip = false WHERE id = '$OPTION'"
     ;;
     "--help")
-        echo "$(basename "$0") -- Schedule and manage RTMP streams
+        echo "$SCRIPT_NAME -- Schedule and manage RTMP streams
 
 DESCRIPTION:
   Manages scheduled streams in the database. Streams should always be scheduled
   in advance to enable automatic container startup/shutdown and Discord notifications.
 
 USAGE:
-  $(basename "$0") <operation> [options]
+  $SCRIPT_NAME <operation> [options]
 
 USER OPERATIONS:
 
@@ -630,7 +631,7 @@ USER OPERATIONS:
     - Start time (format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM)
     - End time (format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM)
 
-    Usage: $(basename "$0") --add
+    Usage: $SCRIPT_NAME --add
 
     Note: Containers start $CONTAINER_BUFFER_MINUTES min before and stop $CONTAINER_BUFFER_MINUTES min after scheduled time.
 
@@ -638,30 +639,30 @@ USER OPERATIONS:
     Interactive tool to schedule a proxy-only container (no Twitch stream).
     Automatically selects an available proxy channel (only1-proxy through only6-proxy).
 
-    Usage: $(basename "$0") --add-proxy
+    Usage: $SCRIPT_NAME --add-proxy
 
   --upcoming
     List all scheduled future streams (both regular and proxy).
 
-    Usage: $(basename "$0") --upcoming
-    Usage: $(basename "$0") --upcoming --ids    (returns only IDs)
+    Usage: $SCRIPT_NAME --upcoming
+    Usage: $SCRIPT_NAME --upcoming --ids    (returns only IDs)
 
   --live
     List currently live streams.
 
-    Usage: $(basename "$0") --live
-    Usage: $(basename "$0") --live --ids        (returns only IDs)
+    Usage: $SCRIPT_NAME --live
+    Usage: $SCRIPT_NAME --live --ids        (returns only IDs)
 
   --ending
     List streams ending within $CONTAINER_BUFFER_MINUTES minutes.
 
-    Usage: $(basename "$0") --ending
-    Usage: $(basename "$0") --ending --ids      (returns only IDs)
+    Usage: $SCRIPT_NAME --ending
+    Usage: $SCRIPT_NAME --ending --ids      (returns only IDs)
 
   --extend <stream_id>
     Extend a stream's end time by $CONTAINER_BUFFER_MINUTES minutes.
 
-    Usage: $(basename "$0") --extend 42
+    Usage: $SCRIPT_NAME --extend 42
 
     Parameters:
       - stream_id: ID of the stream to extend
@@ -670,23 +671,23 @@ USER OPERATIONS:
     Interactive tool to update an existing scheduled stream.
     Allows editing caster, channel, game, title, start time, and end time.
 
-    Usage: $(basename "$0") --update 42
+    Usage: $SCRIPT_NAME --update 42
 
   --skip <stream_id>
     Mark a stream to be skipped (container won't start automatically).
     Use when a scheduled stream needs to be canceled but kept in database.
 
-    Usage: $(basename "$0") --skip 42
+    Usage: $SCRIPT_NAME --skip 42
 
   --unskip <stream_id>
     Remove skip flag from a stream (re-enable automatic startup).
 
-    Usage: $(basename "$0") --unskip 42
+    Usage: $SCRIPT_NAME --unskip 42
 
   --delete <stream_id>
     Delete a stream from the database.
 
-    Usage: $(basename "$0") --delete 42
+    Usage: $SCRIPT_NAME --delete 42
 
 INTERNAL OPERATIONS (used by cron_worker.sh):
 
@@ -729,7 +730,7 @@ NOTES:
 
     ;;
     *)
-        echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+        echo "Option $OPERATION not recognised. Try '$SCRIPT_NAME --help' for more information"
         exit 1
     ;;
 esac

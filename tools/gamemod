@@ -4,6 +4,7 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+SCRIPT_NAME=$SCRIPT_NAME
 OPERATION=$1
 require_operation "$OPERATION"
 
@@ -50,6 +51,12 @@ case $OPERATION in
                 exit 0
             ;;
             *)
+                if ! validate_alphanumeric "$OPTION";
+                then
+                    echo "[ERROR]: Invalid game name. Only alphanumeric characters, dash, and underscore allowed."
+                    exit 1
+                fi
+
                 OUTPUT=$(mysql_exec_silent "SELECT name FROM games WHERE name = '$OPTION'")
 
                 if [[ ! -z $OUTPUT ]];
@@ -64,7 +71,7 @@ case $OPERATION in
         esac
     ;;
     "--help")
-        echo "$(basename "$0") -- Manage games in the MySQL database
+        echo "$SCRIPT_NAME -- Manage games in the MySQL database
 
 DESCRIPTION:
   Add and list games that can be streamed to Twitch. Each game has a technical name,
@@ -145,6 +152,6 @@ NOTES:
         exit 0
     ;;
     *)
-        echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+        echo "Option $OPERATION not recognised. Try '$SCRIPT_NAME --help' for more information"
         exit 1
 esac

@@ -12,7 +12,8 @@ readonly LOCK_DIR="/var/lock"
 
 # Helper functions for container management
 usage() {
-  echo "$(basename "$0") -- Manage RTMP streaming containers
+  SCRIPT_NAME=$SCRIPT_NAME
+  echo "$SCRIPT_NAME -- Manage RTMP streaming containers
 
 DESCRIPTION:
   Manages base infrastructure containers (mysql, php-fpm, nginx-http, haproxy) and
@@ -31,32 +32,32 @@ CONTAINER TYPES:
     - nginx-rtmp-proxy-<caster>: Proxy container (internal relay only)
 
 USAGE:
-  $(basename "$0") <options>
+  $SCRIPT_NAME <options>
 
 COMMON OPERATIONS:
   List all running containers:
-    $(basename "$0") --list
+    $SCRIPT_NAME --list
 
   Start all base containers:
-    $(basename "$0") --start --all
+    $SCRIPT_NAME --start --all
 
   Restart all base containers (fails if streams active):
-    $(basename "$0") --restart --all
+    $SCRIPT_NAME --restart --all
 
   Restart single base container:
-    $(basename "$0") --restart --name haproxy
+    $SCRIPT_NAME --restart --name haproxy
 
   Start a game stream container:
-    $(basename "$0") --start --name nginx-rtmp --caster JohnDoe --channel johndoe --game pubg
+    $SCRIPT_NAME --start --name nginx-rtmp --caster JohnDoe --channel johndoe --game pubg
 
   Start a proxy container:
-    $(basename "$0") --start --name nginx-rtmp --caster JohnDoe --channel johndoe-proxy --proxy
+    $SCRIPT_NAME --start --name nginx-rtmp --caster JohnDoe --channel johndoe-proxy --proxy
 
   Stop a stream container:
-    $(basename "$0") --stop --name nginx-rtmp --caster JohnDoe
+    $SCRIPT_NAME --stop --name nginx-rtmp --caster JohnDoe
 
   Stop a proxy container:
-    $(basename "$0") --stop --name nginx-rtmp --caster JohnDoe --proxy
+    $SCRIPT_NAME --stop --name nginx-rtmp --caster JohnDoe --proxy
 
 OPTIONS:
   -a, --all                      Operate on all base containers (mysql, php-fpm, nginx-http, haproxy)
@@ -270,7 +271,7 @@ run_nginx_rtmp_container() {
     then
         if [ -z "$GAME" ];
         then
-            echo "Game is not provided. Try '$(basename "$0") --help' for more information"
+            echo "Game is not provided. Try '$SCRIPT_NAME --help' for more information"
             exit 1
         fi
 
@@ -279,7 +280,7 @@ run_nginx_rtmp_container() {
             exit 1
         fi
 
-        MYSQL_CONTAINER_ID=$(docker ps -aqf "name=mysql")
+        MYSQL_CONTAINER_ID=$(mysql_container_id)
         if [ -z "$PREDFINED_STREAM_KEY" ];
         then
             echo "Fetching stream key from the Twitch API"
@@ -491,7 +492,7 @@ done
 
 if [[ $ALL && ! -z $NAME ]];
 then
-    echo "ERROR: -a, --all and -n, --name can't be defined together. Try '$(basename "$0") --help' for more information"
+    echo "ERROR: -a, --all and -n, --name can't be defined together. Try '$SCRIPT_NAME --help' for more information"
     exit 1
 fi
 
@@ -516,7 +517,7 @@ case $OPERATION in
         else
             if [ -z "$CONTAINER" ];
             then
-                echo "ERROR: Container name is missing. Try '$(basename "$0") --help' for more information"
+                echo "ERROR: Container name is missing. Try '$SCRIPT_NAME --help' for more information"
                 exit 1
             fi
             case $CONTAINER in
@@ -532,17 +533,17 @@ case $OPERATION in
                 "nginx-rtmp")
                     if [ -z "$CASTER" ];
                     then
-                        echo "ERROR: Caster name is missing. Try '$(basename "$0") --help' for more information"
+                        echo "ERROR: Caster name is missing. Try '$SCRIPT_NAME --help' for more information"
                         exit 1
                     fi
                     if [ -z "$CHANNEL" ];
                     then
-                        echo "ERROR: Channel name is missing. Try '$(basename "$0") --help' for more information"
+                        echo "ERROR: Channel name is missing. Try '$SCRIPT_NAME --help' for more information"
                         exit 1
                     fi
                     if [[ ! $PROXY && -z "$GAME" ]];
                     then
-                        echo "ERROR: Game name is missing. Try '$(basename "$0") --help' for more information"
+                        echo "ERROR: Game name is missing. Try '$SCRIPT_NAME --help' for more information"
                         exit 1
                     fi
                     run_container
@@ -551,7 +552,7 @@ case $OPERATION in
                     run_container
                 ;;
                 *)
-                    echo "Container name $CONTAINER not recognized. Try '$(basename "$0") --help' for more information"
+                    echo "Container name $CONTAINER not recognized. Try '$SCRIPT_NAME --help' for more information"
                 ;;
             esac
         fi
@@ -566,7 +567,7 @@ case $OPERATION in
         else
             if [ -z "$CONTAINER" ];
             then
-                echo "ERROR: Container name is missing. Try '$(basename "$0") --help' for more information"
+                echo "ERROR: Container name is missing. Try '$SCRIPT_NAME --help' for more information"
                 exit 1
             fi
             case $CONTAINER in
@@ -582,7 +583,7 @@ case $OPERATION in
                 "nginx-rtmp")
                     if [ -z "$CASTER" ];
                     then
-                        echo "ERROR: Caster name is missing. Try '$(basename "$0") --help' for more information"
+                        echo "ERROR: Caster name is missing. Try '$SCRIPT_NAME --help' for more information"
                         exit 1
                     fi
                     stop_container
@@ -591,7 +592,7 @@ case $OPERATION in
                     stop_container
                 ;;
                 *)
-                    echo "Container name $CONTAINER not recognized. Try '$(basename "$0") --help' for more information"
+                    echo "Container name $CONTAINER not recognized. Try '$SCRIPT_NAME --help' for more information"
                 ;;
             esac
         fi
@@ -604,7 +605,7 @@ case $OPERATION in
         else
             if [ -z "$CONTAINER" ];
             then
-                echo "ERROR: Container name is missing. Try '$(basename "$0") --help' for more information"
+                echo "ERROR: Container name is missing. Try '$SCRIPT_NAME --help' for more information"
                 exit 1
             fi
             case $CONTAINER in
@@ -617,13 +618,13 @@ case $OPERATION in
                     exit 1
                 ;;
                 *)
-                    echo "Container $CONTAINER not recognized. Try '$(basename "$0") --help' for more information"
+                    echo "Container $CONTAINER not recognized. Try '$SCRIPT_NAME --help' for more information"
                 ;;
             esac
         fi
     ;;
     *)
-        echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+        echo "Option $OPERATION not recognised. Try '$SCRIPT_NAME --help' for more information"
         exit 1
     ;;
 esac

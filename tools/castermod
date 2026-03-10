@@ -4,6 +4,7 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+SCRIPT_NAME=$SCRIPT_NAME
 OPERATION=$1
 require_operation "$OPERATION"
 
@@ -15,13 +16,13 @@ case $OPERATION in
 
         if [ -z "$NICK" ];
         then
-            echo "[ERROR]: Caster name is not present. Try '$(basename "$0") --help' for more information"
+            echo "[ERROR]: Caster name is not present. Try '$SCRIPT_NAME --help' for more information"
             exit 1
         fi
 
         if [ -z "$DISCORD_ID" ];
         then
-            echo "[ERROR]: Discord ID is not present. Try '$(basename "$0") --help' for more information"
+            echo "[ERROR]: Discord ID is not present. Try '$SCRIPT_NAME --help' for more information"
             exit 1
         fi
 
@@ -40,7 +41,13 @@ case $OPERATION in
 
         if [ -z "$NICK" ];
         then
-            echo "[ERROR]: Caster name is not present. Try '$(basename "$0") --help' for more information"
+            echo "[ERROR]: Caster name is not present. Try '$SCRIPT_NAME --help' for more information"
+            exit 1
+        fi
+
+        if ! validate_alphanumeric "$NICK";
+        then
+            echo "[ERROR]: Invalid caster name. Only alphanumeric characters, dash, and underscore allowed."
             exit 1
         fi
 
@@ -51,7 +58,13 @@ case $OPERATION in
 
         if [ -z "$NICK" ];
         then
-            echo "[ERROR]: Caster name is not present. Try '$(basename "$0") --help' for more information"
+            echo "[ERROR]: Caster name is not present. Try '$SCRIPT_NAME --help' for more information"
+            exit 1
+        fi
+
+        if ! validate_alphanumeric "$NICK";
+        then
+            echo "[ERROR]: Invalid caster name. Only alphanumeric characters, dash, and underscore allowed."
             exit 1
         fi
 
@@ -81,6 +94,12 @@ case $OPERATION in
                 exit 0
             ;;
             *)
+                if ! validate_alphanumeric "$OPTION";
+                then
+                    echo "[ERROR]: Invalid caster name. Only alphanumeric characters, dash, and underscore allowed."
+                    exit 1
+                fi
+
                 OUTPUT=$(mysql_exec_silent "SELECT nick, stream_key, CASE WHEN active = false THEN 'disabled' ELSE 'active' END as active, date_added FROM casters WHERE nick = '$OPTION' AND internal = false")
 
                 if [[ ! -z "$OUTPUT" ]];
@@ -99,7 +118,13 @@ case $OPERATION in
 
         if [ -z "$NICK" ];
         then
-            echo "[ERROR]: Caster name is not present. Try '$(basename "$0") --help' for more information"
+            echo "[ERROR]: Caster name is not present. Try '$SCRIPT_NAME --help' for more information"
+            exit 1
+        fi
+
+        if ! validate_alphanumeric "$NICK";
+        then
+            echo "[ERROR]: Invalid caster name. Only alphanumeric characters, dash, and underscore allowed."
             exit 1
         fi
 
@@ -114,7 +139,7 @@ case $OPERATION in
         esac
     ;;
     "--help")
-        echo "$(basename "$0") -- Manage casters in the MySQL database
+        echo "$SCRIPT_NAME -- Manage casters in the MySQL database
 
 DESCRIPTION:
   Add, remove, activate, and list casters who can authenticate to the RTMP service.
@@ -199,6 +224,6 @@ NOTES:
         exit 0
     ;;
     *)
-        echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+        echo "Option $OPERATION not recognised. Try '$SCRIPT_NAME --help' for more information"
         exit 1
 esac

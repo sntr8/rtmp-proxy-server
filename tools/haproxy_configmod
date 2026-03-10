@@ -4,6 +4,8 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+SCRIPT_NAME=$SCRIPT_NAME
+
 # Helper functions for HAProxy configuration management
 add_lock() {
     HAPROXY_CFG_DIR=$1
@@ -17,7 +19,7 @@ add_lock() {
 }
 
 reload_haproxy() {
-    CONTAINER_ID=$(docker ps -aqf "name=haproxy")
+    CONTAINER_ID=$(haproxy_container_id)
     docker kill -s HUP $CONTAINER_ID
     echo "HAproxy reloaded"
 }
@@ -37,13 +39,13 @@ case $OPERATION in
 
         if [ -z "$CASTER" ];
         then
-            echo "[ERROR]: Caster is missing. Try '$(basename "$0") --help' for more information"
+            echo "[ERROR]: Caster is missing. Try '$SCRIPT_NAME --help' for more information"
             exit 1
         fi
 
         if [ -z "$CHANNEL" ];
         then
-            echo "[ERROR]: Channel is missing. Try '$(basename "$0") --help' for more information"
+            echo "[ERROR]: Channel is missing. Try '$SCRIPT_NAME --help' for more information"
             exit 1
         fi
 
@@ -53,7 +55,7 @@ case $OPERATION in
 
         # Extract RTMP config template from running haproxy container
         mkdir -p /tmp/$SESSION_ID/
-        CONTAINER_ID=$(docker ps -aqf "name=haproxy")
+        CONTAINER_ID=$(haproxy_container_id)
 
         if [ -z "$CONTAINER_ID" ];
         then
@@ -95,7 +97,7 @@ case $OPERATION in
 
         if [ -z "$CASTER" ];
         then
-            echo "[ERROR]: Caster is missing. Try '$(basename "$0") --help' for more information"
+            echo "[ERROR]: Caster is missing. Try '$SCRIPT_NAME --help' for more information"
             exit 1
         fi
 
@@ -118,7 +120,7 @@ case $OPERATION in
 
     ;;
     "--help")
-        echo "$(basename "$0") -- Manage HAProxy RTMP routing configuration
+        echo "$SCRIPT_NAME -- Manage HAProxy RTMP routing configuration
 
 DESCRIPTION:
   Dynamically add or remove RTMP container routing entries in HAProxy configuration.
@@ -129,7 +131,7 @@ DESCRIPTION:
   nginx-rtmp containers.
 
 USAGE:
-  $(basename "$0") <operation> <parameters>
+  $SCRIPT_NAME <operation> <parameters>
 
 OPERATIONS:
 
@@ -145,8 +147,8 @@ OPERATIONS:
       - caster:  Caster nickname (e.g., JohnDoe)
       - channel: Channel name (e.g., mainchannel, only1-proxy)
 
-    Usage: $(basename "$0") --add JohnDoe mainchannel
-    Usage: $(basename "$0") --add JohnDoe only1-proxy
+    Usage: $SCRIPT_NAME --add JohnDoe mainchannel
+    Usage: $SCRIPT_NAME --add JohnDoe only1-proxy
 
   --remove <caster>
     Remove an existing RTMP routing configuration for a caster.
@@ -157,7 +159,7 @@ OPERATIONS:
     Parameters:
       - caster: Caster nickname (e.g., JohnDoe)
 
-    Usage: $(basename "$0") --remove JohnDoe
+    Usage: $SCRIPT_NAME --remove JohnDoe
 
 CONFIGURATION DETAILS:
 
@@ -220,7 +222,7 @@ NOTES:
         exit 0
     ;;
     *)
-        echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+        echo "Option $OPERATION not recognised. Try '$SCRIPT_NAME --help' for more information"
         exit 1
     ;;
 esac

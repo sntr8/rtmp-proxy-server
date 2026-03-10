@@ -11,6 +11,10 @@ mysql_container_id() {
     docker ps -aqf "name=mysql"
 }
 
+haproxy_container_id() {
+    docker ps -aqf "name=haproxy"
+}
+
 mysql_exec() {
     # Execute MySQL command with default output
     # Usage: mysql_exec "SELECT * FROM table"
@@ -33,6 +37,26 @@ strip_cr() {
     # Strip carriage return from string
     # Usage: result=$(strip_cr "$variable")
     echo "${1%$'\r'}"
+}
+
+sanitize_sql_string() {
+    # Escape single quotes for SQL string literals
+    # Usage: safe_value=$(sanitize_sql_string "$user_input")
+    # Replaces ' with '' (SQL standard escaping)
+    local input="$1"
+    echo "${input//\'/\'\'}"
+}
+
+validate_alphanumeric() {
+    # Validate that input contains only alphanumeric, dash, underscore
+    # Usage: if validate_alphanumeric "$input"; then ...
+    # Returns 0 if valid, 1 if invalid
+    local input="$1"
+    if [[ "$input" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        return 0
+    else
+        return 1
+    fi
 }
 
 require_operation() {
