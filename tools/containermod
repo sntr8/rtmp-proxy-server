@@ -4,6 +4,12 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+# Configuration paths
+readonly HAPROXY_CONFIG_DIR="/opt/haproxy"
+readonly LETSENCRYPT_DIR="/opt/letsencrypt"
+readonly MYSQL_DATA_DIR="/opt/mysql/data"
+readonly LOCK_DIR="/var/lock"
+
 # Helper functions for container management
 usage() {
   echo "$(basename "$0") -- Manage RTMP streaming containers
@@ -83,7 +89,7 @@ OPTIONS:
 
 IMPORTANT NOTES:
   - nginx-http and php-fpm CANNOT be stopped while nginx-rtmp containers are running
-    (safety mechanism checked via /var/lock/nginx-rtmp-*.lock files)
+    (safety mechanism checked via $LOCK_DIR/nginx-rtmp-*.lock files)
   - nginx-rtmp containers CANNOT use --restart (use --stop then --start instead)
   - To restart all: first stop all nginx-rtmp containers, then restart base containers
 
@@ -100,7 +106,7 @@ EXAMPLES:
 }
 
 check_stream_container_lock() {
-    if [[ $(find /var/lock/ -maxdepth 1 -name "nginx-rtmp-*.lock") ]];
+    if [[ $(find "$LOCK_DIR" -maxdepth 1 -name "nginx-rtmp-*.lock") ]];
     then
         return 1
     else
@@ -169,14 +175,14 @@ run_haproxy_container() {
 
     pull_container "haproxy"
 
-    mkdir -p /opt/haproxy
+    mkdir -p "$HAPROXY_CONFIG_DIR"
 
     HAPROXY_IMAGE=$(get_image_name "haproxy" "$HAPROXY_VERSION")
 
     echo "Extracting fresh HAProxy config from image..."
-    docker run --rm "$HAPROXY_IMAGE" cat /usr/local/etc/haproxy/templates/haproxy.cfg > /opt/haproxy/haproxy.cfg
+    docker run --rm "$HAPROXY_IMAGE" cat /usr/local/etc/haproxy/templates/haproxy.cfg > "$HAPROXY_CONFIG_DIR/haproxy.cfg"
 
-    if [ $? -ne 0 ] || [ ! -s /opt/haproxy/haproxy.cfg ];
+    if [ $? -ne 0 ] || [ ! -s "$HAPROXY_CONFIG_DIR/haproxy.cfg" ];
     then
         echo "ERROR: Failed to extract HAProxy config from image"
         exit 1
@@ -187,8 +193,8 @@ run_haproxy_container() {
     docker run --rm --net stream --name haproxy -d \
     -e FQDN="$FQDN" \
     -e ADMIN_EMAIL="$ADMIN_EMAIL" \
-    -v /opt/haproxy/:/usr/local/etc/haproxy/ \
-    -v /opt/letsencrypt/:/etc/letsencrypt/ \
+    -v "$HAPROXY_CONFIG_DIR":/usr/local/etc/haproxy/ \
+    -v "$LETSENCRYPT_DIR":/etc/letsencrypt/ \
     -p 80:80 \
     -p 443:443 \
     -p 8084:8084 \
@@ -208,7 +214,7 @@ run_mysql_container() {
     pull_container "mysql"
 
     MYSQL_IMAGE=$(get_image_name "mysql" "$MYSQL_VERSION")
-    ID=$(docker run --rm --net stream --name mysql -d -v /opt/mysql/data/:/var/lib/mysql -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD" -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -e MYSQL_DATABASE="$MYSQL_DATABASE" "$MYSQL_IMAGE")
+    ID=$(docker run --rm --net stream --name mysql -d -v "$MYSQL_DATA_DIR":/var/lib/mysql -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD" -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -e MYSQL_DATABASE="$MYSQL_DATABASE" "$MYSQL_IMAGE")
     docker exec -it "$ID" /bin/sh -c 'envsubst < /creds.cnf.template > /creds.cnf'
 }
 
@@ -315,7 +321,7 @@ run_nginx_rtmp_container() {
         exit 1
     fi
 
-    touch /var/lock/"$CONTAINER_NAME".lock
+    touch "$LOCK_DIR/$CONTAINER_NAME.lock"
     if $PROXY;
     then
         haproxy_configmod --add "proxy-$CASTER" "$CHANNEL"
@@ -382,11 +388,11 @@ stop_container() {
             then
                 docker stop "$CONTAINER-proxy-$CASTER"
                 haproxy_configmod --remove "proxy-$CASTER"
-                rm /var/lock/"$CONTAINER-proxy-$CASTER".lock
+                rm "$LOCK_DIR/$CONTAINER-proxy-$CASTER.lock"
             else
                 docker stop "$CONTAINER-$CASTER"
                 haproxy_configmod --remove "$CASTER"
-                rm /var/lock/"$CONTAINER-$CASTER".lock
+                rm "$LOCK_DIR/$CONTAINER-$CASTER.lock"
             fi
             castermod --disable "$CASTER"
         ;;
