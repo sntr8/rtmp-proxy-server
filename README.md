@@ -72,8 +72,7 @@ Port mapping: **48001-48010** for regular streams, **48101-48110** for proxy-onl
 ## Documentation
 
 - **[Wiki](../../wiki)** - Detailed documentation, architecture, configuration, troubleshooting
-- **[admin.md](admin.md)** - Comprehensive administration guide
-- **[userguide.md](userguide.md)** - Guide for streamers
+- **[USER_GUIDE.md](USER_GUIDE.md)** - Guide for streamers
 
 ### Wiki Pages
 

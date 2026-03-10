@@ -64,8 +64,7 @@ Why? HAProxy operates at Layer 4 (TCP) and cannot parse RTMP application names f
 ## Quick Links
 
 - [Main Repository README](../README.md)
-- [Administration Guide (admin.md)](../admin.md)
-- [User Guide (userguide.md)](../userguide.md)
+- [User Guide (USER_GUIDE.md)](../USER_GUIDE.md)
 - [License](../LICENSE)
 
 ## Need Help?
