@@ -159,6 +159,185 @@ pull_container() {
     fi
 }
 
+# Helper functions for starting individual container types
+run_haproxy_container() {
+    if ! check_running "haproxy";
+    then
+        echo "A haproxy container is already running. If you need to restart use --restart instead."
+        exit 1
+    fi
+
+    pull_container "haproxy"
+
+    mkdir -p /opt/haproxy
+
+    HAPROXY_IMAGE=$(get_image_name "haproxy" "$HAPROXY_VERSION")
+
+    echo "Extracting fresh HAProxy config from image..."
+    docker run --rm "$HAPROXY_IMAGE" cat /usr/local/etc/haproxy/templates/haproxy.cfg > /opt/haproxy/haproxy.cfg
+
+    if [ $? -ne 0 ] || [ ! -s /opt/haproxy/haproxy.cfg ];
+    then
+        echo "ERROR: Failed to extract HAProxy config from image"
+        exit 1
+    fi
+
+    echo "HAProxy config extracted"
+
+    docker run --rm --net stream --name haproxy -d \
+    -e FQDN="$FQDN" \
+    -e ADMIN_EMAIL="$ADMIN_EMAIL" \
+    -v /opt/haproxy/:/usr/local/etc/haproxy/ \
+    -v /opt/letsencrypt/:/etc/letsencrypt/ \
+    -p 80:80 \
+    -p 443:443 \
+    -p 8084:8084 \
+    -p 48001-48010:48001-48010 \
+    -p 48101-48110:48101-48110 \
+    --sysctl net.ipv4.ip_unprivileged_port_start=0 \
+    "$HAPROXY_IMAGE"
+}
+
+run_mysql_container() {
+    if ! check_running "mysql";
+    then
+        echo "A mysql container is already running. If you need to restart use --restart instead."
+        exit 1
+    fi
+
+    pull_container "mysql"
+
+    MYSQL_IMAGE=$(get_image_name "mysql" "$MYSQL_VERSION")
+    ID=$(docker run --rm --net stream --name mysql -d -v /opt/mysql/data/:/var/lib/mysql -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD" -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -e MYSQL_DATABASE="$MYSQL_DATABASE" "$MYSQL_IMAGE")
+    docker exec -it "$ID" /bin/sh -c 'envsubst < /creds.cnf.template > /creds.cnf'
+}
+
+run_nginx_http_container() {
+    if ! check_running "nginx-http";
+    then
+        echo "A nginx-http container is already running. If you need to restart use --restart instead."
+        exit 1
+    fi
+
+    pull_container "nginx-http"
+
+    NGINX_HTTP_IMAGE=$(get_image_name "nginx-http" "$NGINX_HTTP_VERSION")
+    docker run --rm --net stream --name nginx-http -d \
+        -e FQDN="$FQDN" \
+        --add-host=host.docker.internal:host-gateway \
+        "$NGINX_HTTP_IMAGE"
+}
+
+run_nginx_rtmp_container() {
+    if check_running "mysql";
+    then
+        echo "A mysql container is not running. If you need to restart use --restart instead."
+        exit 1
+    fi
+
+    STREAM_DELAY=0
+
+    if ! search_caster "$CASTER";
+    then
+        exit 1
+    fi
+
+    if $PROXY;
+    then
+        CONTAINER_NAME="nginx-rtmp-proxy-$CASTER"
+    else
+        CONTAINER_NAME="nginx-rtmp-$CASTER"
+    fi
+
+    if ! check_running "$CONTAINER_NAME";
+    then
+        echo "A $CONTAINER_NAME container is already running. If you need to restart, use --restart instead."
+        exit 1
+    fi
+
+    if ! search_channel "$CHANNEL";
+    then
+        exit 1
+    fi
+
+    if ! $PROXY;
+    then
+        if [ -z "$GAME" ];
+        then
+            echo "Game is not provided. Try '$(basename "$0") --help' for more information"
+            exit 1
+        fi
+
+        if ! search_game "$GAME";
+        then
+            exit 1
+        fi
+
+        MYSQL_CONTAINER_ID=$(docker ps -aqf "name=mysql")
+        if [ -z "$PREDFINED_STREAM_KEY" ];
+        then
+            echo "Fetching stream key from the Twitch API"
+            if ! TWITCH_STREAM_KEY=$(twitch_get_stream_key $CHANNEL);
+            then
+                echo "ERROR: Fetching Twitch stream key failed."
+                twitch_get_api_error $CHANNEL
+                exit 1
+            fi
+        else
+            echo "Using the predefined stream key"
+            TWITCH_STREAM_KEY="$PREDFINED_STREAM_KEY"
+        fi
+
+        STREAM_DELAY=$(mysql_exec_silent "SELECT delay FROM games WHERE name = '$GAME'")
+        STREAM_DELAY=$(strip_cr "$STREAM_DELAY")
+    fi
+
+    NGINX_RTMP_IMAGE=$(get_image_name "nginx-rtmp" "$NGINX_RTMP_VERSION")
+
+    if [ $STREAM_DELAY -eq 0 ] && ! $PROXY;
+    then
+        docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e GAME="$GAME" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e STREAM_DELAY="0" -e PROXY_ONLY=false "$NGINX_RTMP_IMAGE"
+    elif $PROXY;
+    then
+        docker run --rm --net stream --name nginx-rtmp-proxy-"$CASTER" -d -e CASTER="$CASTER" -e STREAM_DELAY="0" -e PROXY_ONLY=true "$NGINX_RTMP_IMAGE"
+    else
+        INTERNAL_STREAM_KEY=$(mysql_exec_silent "SELECT stream_key FROM casters WHERE nick = 'internal_technical_user'")
+        INTERNAL_STREAM_KEY=$(strip_cr "$INTERNAL_STREAM_KEY")
+
+        docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e GAME="$GAME" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e INTERNAL_STREAM_KEY="$INTERNAL_STREAM_KEY" -e STREAM_DELAY="$STREAM_DELAY" -e PROXY_ONLY=false "$NGINX_RTMP_IMAGE"
+    fi
+
+    STARTUP_RESULT=$?
+
+    if [ "$STARTUP_RESULT" -eq 1 ];
+    then
+        echo "[ERROR]: Container startup failed"
+        exit 1
+    fi
+
+    touch /var/lock/"$CONTAINER_NAME".lock
+    if $PROXY;
+    then
+        haproxy_configmod --add "proxy-$CASTER" "$CHANNEL"
+    else
+        haproxy_configmod --add "$CASTER" "$CHANNEL"
+    fi
+    castermod --activate "$CASTER"
+}
+
+run_php_fpm_container() {
+    if ! check_running "php-fpm";
+    then
+        echo "A php-fpm container is already running. If you need to restart use --restart instead."
+        exit 1
+    fi
+
+    pull_container "php-fpm"
+
+    PHP_FPM_IMAGE=$(get_image_name "php-fpm" "$PHP_FPM_VERSION")
+    docker run --rm --net stream --name php-fpm -d -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -e MYSQL_DATABASE="$MYSQL_DATABASE" "$PHP_FPM_IMAGE"
+}
+
 run_container() {
     if [ ! -z "$1" ];
     then
@@ -173,177 +352,19 @@ run_container() {
 
     case $CONTAINER in
         "haproxy")
-            if ! check_running "$CONTAINER";
-            then
-                echo "A $CONTAINER container is already running. If you need to restart use --restart instead."
-                exit 1
-            fi
-
-            pull_container "$CONTAINER"
-
-            mkdir -p /opt/haproxy
-
-            HAPROXY_IMAGE=$(get_image_name "haproxy" "$HAPROXY_VERSION")
-
-            echo "Extracting fresh HAProxy config from image..."
-            docker run --rm "$HAPROXY_IMAGE" cat /usr/local/etc/haproxy/templates/haproxy.cfg > /opt/haproxy/haproxy.cfg
-
-            if [ $? -ne 0 ] || [ ! -s /opt/haproxy/haproxy.cfg ];
-            then
-                echo "ERROR: Failed to extract HAProxy config from image"
-                exit 1
-            fi
-
-            echo "HAProxy config extracted"
-
-            docker run --rm --net stream --name haproxy -d \
-            -e FQDN="$FQDN" \
-            -e ADMIN_EMAIL="$ADMIN_EMAIL" \
-            -v /opt/haproxy/:/usr/local/etc/haproxy/ \
-            -v /opt/letsencrypt/:/etc/letsencrypt/ \
-            -p 80:80 \
-            -p 443:443 \
-            -p 8084:8084 \
-            -p 48001-48010:48001-48010 \
-            -p 48101-48110:48101-48110 \
-            --sysctl net.ipv4.ip_unprivileged_port_start=0 \
-            "$HAPROXY_IMAGE"
+            run_haproxy_container
         ;;
         "mysql")
-            if ! check_running "$CONTAINER";
-            then
-                echo "A $CONTAINER container is already running. If you need to restart use --restart instead."
-                exit 1
-            fi
-
-            pull_container "$CONTAINER"
-
-            MYSQL_IMAGE=$(get_image_name "mysql" "$MYSQL_VERSION")
-            ID=$(docker run --rm --net stream --name mysql -d -v /opt/mysql/data/:/var/lib/mysql -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD" -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -e MYSQL_DATABASE="$MYSQL_DATABASE" "$MYSQL_IMAGE")
-            docker exec -it "$ID" /bin/sh -c 'envsubst < /creds.cnf.template > /creds.cnf'
+            run_mysql_container
         ;;
         "nginx-http")
-            if ! check_running "$CONTAINER";
-            then
-                echo "A $CONTAINER container is already running. If you need to restart use --restart instead."
-                exit 1
-            fi
-
-            pull_container "$CONTAINER"
-
-            NGINX_HTTP_IMAGE=$(get_image_name "nginx-http" "$NGINX_HTTP_VERSION")
-            docker run --rm --net stream --name nginx-http -d \
-                -e FQDN="$FQDN" \
-                --add-host=host.docker.internal:host-gateway \
-                "$NGINX_HTTP_IMAGE"
+            run_nginx_http_container
         ;;
         "nginx-rtmp")
-            if check_running "mysql";
-            then
-                echo "A mysql container is not running. If you need to restart use --restart instead."
-                exit 1
-            fi
-
-            STREAM_DELAY=0
-
-            if ! search_caster "$CASTER";
-            then
-                exit 1
-            fi
-
-            if $PROXY;
-            then
-                CONTAINER_NAME="$CONTAINER-proxy-$CASTER"
-            else
-                CONTAINER_NAME="$CONTAINER-$CASTER"
-            fi
-
-            if ! check_running "$CONTAINER_NAME";
-            then
-                echo "A $CONTAINER_NAME container is already running. If you need to restart, use --restart instead."
-                exit 1
-            fi
-
-            if ! search_channel "$CHANNEL";
-            then
-                exit 1
-            fi
-
-            if ! $PROXY;
-            then
-                if [ -z "$GAME" ];
-                then
-                    echo "Game is not provided. Try '$(basename "$0") --help' for more information"
-                    exit 1
-                fi
-
-                if ! search_game "$GAME";
-                then
-                    exit 1
-                fi
-
-                MYSQL_CONTAINER_ID=$(docker ps -aqf "name=mysql")
-                if [ -z "$PREDFINED_STREAM_KEY" ];
-                then
-                    echo "Fetching stream key from the Twitch API"
-                    if ! TWITCH_STREAM_KEY=$(twitch_get_stream_key $CHANNEL);
-                    then
-                        echo "ERROR: Fetching Twitch stream key failed."
-                        twitch_get_api_error $CHANNEL
-                        exit 1
-                    fi
-                else
-                    echo "Using the predefined stream key"
-                    TWITCH_STREAM_KEY="$PREDFINED_STREAM_KEY"
-                fi
-
-                STREAM_DELAY=$(mysql_exec_silent "SELECT delay FROM games WHERE name = '$GAME'")
-                STREAM_DELAY=$(strip_cr "$STREAM_DELAY")
-            fi
-
-            NGINX_RTMP_IMAGE=$(get_image_name "nginx-rtmp" "$NGINX_RTMP_VERSION")
-
-            if [ $STREAM_DELAY -eq 0 ] && ! $PROXY;
-            then
-                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e GAME="$GAME" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e STREAM_DELAY="0" -e PROXY_ONLY=false "$NGINX_RTMP_IMAGE"
-            elif $PROXY;
-            then
-                docker run --rm --net stream --name nginx-rtmp-proxy-"$CASTER" -d -e CASTER="$CASTER" -e STREAM_DELAY="0" -e PROXY_ONLY=true "$NGINX_RTMP_IMAGE"
-            else
-                INTERNAL_STREAM_KEY=$(mysql_exec_silent "SELECT stream_key FROM casters WHERE nick = 'internal_technical_user'")
-                INTERNAL_STREAM_KEY=$(strip_cr "$INTERNAL_STREAM_KEY")
-
-                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e GAME="$GAME" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e INTERNAL_STREAM_KEY="$INTERNAL_STREAM_KEY" -e STREAM_DELAY="$STREAM_DELAY" -e PROXY_ONLY=false "$NGINX_RTMP_IMAGE"
-            fi
-
-            STARTUP_RESULT=$?
-
-            if [ "$STARTUP_RESULT" -eq 1 ];
-            then
-                echo "[ERROR]: Container startup failed"
-                exit 1
-            fi
-
-            touch /var/lock/"$CONTAINER_NAME".lock
-            if $PROXY;
-            then
-                haproxy_configmod --add "proxy-$CASTER" "$CHANNEL"
-            else
-                haproxy_configmod --add "$CASTER" "$CHANNEL"
-            fi
-            castermod --activate "$CASTER"
+            run_nginx_rtmp_container
         ;;
         "php-fpm")
-            if ! check_running "$CONTAINER";
-            then
-                echo "A $CONTAINER container is already running. If you need to restart use --restart instead."
-                exit 1
-            fi
-
-            pull_container "$CONTAINER"
-
-            PHP_FPM_IMAGE=$(get_image_name "php-fpm" "$PHP_FPM_VERSION")
-            docker run --rm --net stream --name php-fpm -d -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -e MYSQL_DATABASE="$MYSQL_DATABASE" "$PHP_FPM_IMAGE"
+            run_php_fpm_container
         ;;
     esac
 }
