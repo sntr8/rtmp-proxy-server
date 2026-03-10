@@ -4,6 +4,7 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+# Helper functions for HAProxy configuration management
 add_lock() {
     HAPROXY_CFG_DIR=$1
     if [ -f $HAPROXY_CFG_DIR/.haproxy.cfg.lck ];

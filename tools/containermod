@@ -4,6 +4,7 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+# Helper functions for container management
 usage() {
   echo "$(basename "$0") -- Manage RTMP streaming containers
 
@@ -469,7 +470,7 @@ fi
 
 if [ -z "$OPERATION" ];
 then
-    echo "ERROR: Operation was missing. Try '$(basename "$0") --help' for more information"
+    echo "$(basename "$0"): operation required. Try '$(basename "$0") --help' for more information"
     exit 1
 fi
 

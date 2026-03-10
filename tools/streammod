@@ -4,6 +4,7 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+# Helper functions for datetime conversion and validation
 # Validate and convert datetime to MySQL format
 # Accepts: DD.MM.YYYY HH:MM (EU) or MM/DD/YYYY HH:MM (US)
 # Returns: YYYY-MM-DD HH:MM (MySQL format) or empty string on error

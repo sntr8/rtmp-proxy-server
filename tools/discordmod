@@ -1,10 +1,10 @@
 #!/bin/bash
-
 SOURCE_DIR="$(dirname "$0")"
 
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+# Helper function to normalize Discord user/role mentions
 normalize_discord_mention() {
     local input="$1"
 
