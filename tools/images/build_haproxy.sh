@@ -23,7 +23,7 @@ fi
 docker build $OPTS -t haproxy haproxy
 BUILD_SUCCESS=$?
 
-if [ $BUILD_SUCCESS -eq 0 ];
+if [ "$BUILD_SUCCESS" -eq 0 ];
 then
     if [ -n "$REGISTRY" ]; then
         # Tag for registry
@@ -37,7 +37,7 @@ then
             -c -f /usr/local/etc/haproxy/haproxy.cfg
         TEST_SUCCESS=$?
 
-        if [ $TEST_SUCCESS -eq 0 ];
+        if [ "$TEST_SUCCESS" -eq 0 ];
         then
             echo "Pushing haproxy:$VERSION to $REGISTRY"
             docker push "$REGISTRY/haproxy:$VERSION"
@@ -53,7 +53,7 @@ then
             -c -f /usr/local/etc/haproxy/haproxy.cfg
         TEST_SUCCESS=$?
 
-        if [ $TEST_SUCCESS -eq 0 ];
+        if [ "$TEST_SUCCESS" -eq 0 ];
         then
             echo "HAProxy built successfully (local only, no push)"
         else

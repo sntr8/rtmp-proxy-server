@@ -18,6 +18,12 @@ case $OPERATION in
         castermod --list --ids
         read -r -p "What's the caster ID (Use the list above): " CASTER
 
+        if ! validate_numeric "$CASTER";
+        then
+            echo "[ERROR]: Invalid caster ID. Must be a number."
+            exit 1
+        fi
+
         if ! db_get_caster_name_with_id $CASTER > /dev/null;
         then
             echo "$CASTER is not a valid caster ID"
@@ -31,6 +37,18 @@ case $OPERATION in
             [yY][eE][sS]|[yY])
               castermod --list --ids
               read -r -p "What's the co-caster ID (Use the list above): " COCASTER
+
+              if ! validate_numeric "$COCASTER";
+              then
+                  echo "[ERROR]: Invalid co-caster ID. Must be a number."
+                  exit 1
+              fi
+
+              if ! db_get_caster_name_with_id $COCASTER > /dev/null;
+              then
+                  echo "$COCASTER is not a valid caster ID"
+                  exit 1
+              fi
             ;;
             *)
                 echo "Won't add a co-caster proxy"
@@ -41,6 +59,12 @@ case $OPERATION in
         channelmod --list --ids
         read -r -p "What's the channel ID (Use the list above): " CHANNEL
 
+        if ! validate_numeric "$CHANNEL";
+        then
+            echo "[ERROR]: Invalid channel ID. Must be a number."
+            exit 1
+        fi
+
         if ! db_get_channel_name_with_id $CHANNEL > /dev/null;
         then
             echo "$CHANNEL is not a valid channel ID"
@@ -50,6 +74,12 @@ case $OPERATION in
         echo "Available games: "
         gamemod --list --ids
         read -r -p "What's the game ID? (Use the list above):  " GAME
+
+        if ! validate_numeric "$GAME";
+        then
+            echo "[ERROR]: Invalid game ID. Must be a number."
+            exit 1
+        fi
 
         if ! db_get_game_name_with_id $GAME > /dev/null;
         then
@@ -154,6 +184,12 @@ case $OPERATION in
         echo "Available casters: "
         castermod --list --ids
         read -r -p "What's the caster ID (Use the list above): " CASTER
+
+        if ! validate_numeric "$CASTER";
+        then
+            echo "[ERROR]: Invalid caster ID. Must be a number."
+            exit 1
+        fi
 
         if ! db_get_caster_name_with_id $CASTER > /dev/null;
         then
@@ -306,6 +342,12 @@ case $OPERATION in
                 castermod --list --ids
                 read -r -p "What's the caster ID (Use the list above): " EDIT_CASTER
 
+                if ! validate_numeric "$EDIT_CASTER";
+                then
+                    echo "[ERROR]: Invalid caster ID. Must be a number."
+                    exit 1
+                fi
+
                 if ! db_get_caster_name_with_id $EDIT_CASTER > /dev/null;
                 then
                     echo "$EDIT_CASTER is not a valid caster ID"
@@ -327,6 +369,12 @@ case $OPERATION in
                 echo "Available channels: "
                 channelmod --list --ids
                 read -r -p "What's the channel ID (Use the list above): " EDIT_CHANNEL
+
+                if ! validate_numeric "$EDIT_CHANNEL";
+                then
+                    echo "[ERROR]: Invalid channel ID. Must be a number."
+                    exit 1
+                fi
 
                 if ! db_get_channel_name_with_id $EDIT_CHANNEL > /dev/null;
                 then
@@ -356,6 +404,12 @@ No changes: N
                     castermod --list --ids
                     read -r -p "What's the co-caster ID (Use the list above): " EDIT_COCASTER
 
+                    if ! validate_numeric "$EDIT_COCASTER";
+                    then
+                        echo "[ERROR]: Invalid co-caster ID. Must be a number."
+                        exit 1
+                    fi
+
                     if ! db_get_caster_name_with_id $EDIT_COCASTER > /dev/null;
                     then
                         echo "$EDIT_COCASTER is not a valid caster ID"
@@ -382,6 +436,12 @@ No changes: N
                     echo "Available co-casters: "
                     castermod --list --ids
                     read -r -p "What's the co-caster ID (Use the list above): " EDIT_COCASTER
+
+                    if ! validate_numeric "$EDIT_COCASTER";
+                    then
+                        echo "[ERROR]: Invalid co-caster ID. Must be a number."
+                        exit 1
+                    fi
 
                     if ! db_get_caster_name_with_id $EDIT_COCASTER > /dev/null;
                     then

@@ -23,7 +23,7 @@ fi
 docker build $OPTS -t php-fpm -f php-fpm/Dockerfile .
 BUILD_SUCCESS=$?
 
-if [ $BUILD_SUCCESS -eq 0 ];
+if [ "$BUILD_SUCCESS" -eq 0 ];
 then
     if [ -n "$REGISTRY" ]; then
         # Tag and push to registry

@@ -9,23 +9,23 @@ SCRIPT_NAME=$SCRIPT_NAME
 # Helper functions for HAProxy configuration management
 add_lock() {
     HAPROXY_CFG_DIR=$1
-    if [ -f $HAPROXY_CFG_DIR/.haproxy.cfg.lck ];
+    if [ -f "$HAPROXY_CFG_DIR/.haproxy.cfg.lck" ];
     then
         echo "An other process is editing haproxy.cfg. Can't edit the file."
         exit 2
     else
-        touch $HAPROXY_CFG_DIR/.haproxy.cfg.lck
+        touch "$HAPROXY_CFG_DIR/.haproxy.cfg.lck"
     fi
 }
 
 reload_haproxy() {
     CONTAINER_ID=$(haproxy_container_id)
-    docker kill -s HUP $CONTAINER_ID
+    docker kill -s HUP "$CONTAINER_ID"
     echo "HAproxy reloaded"
 }
 
 remove_lock() {
-    rm $HAPROXY_CFG_DIR/.haproxy.cfg.lck
+    rm "$HAPROXY_CFG_DIR/.haproxy.cfg.lck"
 }
 
 OPERATION=$1
@@ -51,43 +51,43 @@ case $OPERATION in
 
         PORT=$(db_get_channel_port $CHANNEL)
 
-        add_lock $HAPROXY_CFG_DIR
+        add_lock "$HAPROXY_CFG_DIR"
 
         # Extract RTMP config template from running haproxy container
-        mkdir -p /tmp/$SESSION_ID/
+        mkdir -p "/tmp/$SESSION_ID/"
         CONTAINER_ID=$(haproxy_container_id)
 
         if [ -z "$CONTAINER_ID" ];
         then
-            remove_lock $HAPROXY_CFG_DIR
+            remove_lock "$HAPROXY_CFG_DIR"
             echo "ERROR: HAProxy container is not running. Start it first."
             exit 1
         fi
 
         echo "Extracting RTMP config template from haproxy container..."
-        docker exec "$CONTAINER_ID" cat /usr/local/etc/haproxy/templates/haproxy-rtmp.cfg > /tmp/$SESSION_ID/haproxy-rtmp.cfg
+        docker exec "$CONTAINER_ID" cat /usr/local/etc/haproxy/templates/haproxy-rtmp.cfg > "/tmp/$SESSION_ID/haproxy-rtmp.cfg"
 
-        if [ $? -ne 0 ] || [ ! -s /tmp/$SESSION_ID/haproxy-rtmp.cfg ];
+        if [ $? -ne 0 ] || [ ! -s "/tmp/$SESSION_ID/haproxy-rtmp.cfg" ];
         then
-            remove_lock $HAPROXY_CFG_DIR
+            remove_lock "$HAPROXY_CFG_DIR"
             echo "ERROR: Failed to extract RTMP template from container"
-            rm -rf /tmp/$SESSION_ID/
+            rm -rf "/tmp/$SESSION_ID/"
             exit 1
         fi
 
         # Replace placeholders in template
-        sed -i "s/<CHANNEL>/$CHANNEL/g" /tmp/$SESSION_ID/haproxy-rtmp.cfg
-        sed -i "s/<CASTER>/$CASTER/g" /tmp/$SESSION_ID/haproxy-rtmp.cfg
-        sed -i "s/<PORT>/$PORT/g" /tmp/$SESSION_ID/haproxy-rtmp.cfg
+        sed -i "s/<CHANNEL>/$CHANNEL/g" "/tmp/$SESSION_ID/haproxy-rtmp.cfg"
+        sed -i "s/<CASTER>/$CASTER/g" "/tmp/$SESSION_ID/haproxy-rtmp.cfg"
+        sed -i "s/<PORT>/$PORT/g" "/tmp/$SESSION_ID/haproxy-rtmp.cfg"
 
         # Append to main config
-        echo "# ::$CASTER::start" >> $HAPROXY_CFG_DIR/haproxy.cfg
-        cat /tmp/$SESSION_ID/haproxy-rtmp.cfg >> $HAPROXY_CFG_DIR/haproxy.cfg
-        echo "# ::$CASTER::end" >> $HAPROXY_CFG_DIR/haproxy.cfg
+        echo "# ::$CASTER::start" >> "$HAPROXY_CFG_DIR/haproxy.cfg"
+        cat "/tmp/$SESSION_ID/haproxy-rtmp.cfg" >> "$HAPROXY_CFG_DIR/haproxy.cfg"
+        echo "# ::$CASTER::end" >> "$HAPROXY_CFG_DIR/haproxy.cfg"
 
-        rm -rf /tmp/$SESSION_ID/
+        rm -rf "/tmp/$SESSION_ID/"
 
-        remove_lock $HAPROXY_CFG_DIR
+        remove_lock "$HAPROXY_CFG_DIR"
 
         reload_haproxy
 
@@ -101,13 +101,13 @@ case $OPERATION in
             exit 1
         fi
 
-        add_lock $HAPROXY_CFG_DIR
+        add_lock "$HAPROXY_CFG_DIR"
 
-        md5old=$(md5sum $HAPROXY_CFG_DIR/haproxy.cfg)
+        md5old=$(md5sum "$HAPROXY_CFG_DIR/haproxy.cfg")
 
-        sed -i "/^# ::$CASTER::start$/,/^# ::$CASTER::end$/d" $HAPROXY_CFG_DIR/haproxy.cfg
+        sed -i "/^# ::$CASTER::start$/,/^# ::$CASTER::end$/d" "$HAPROXY_CFG_DIR/haproxy.cfg"
 
-        md5new=$(md5sum $HAPROXY_CFG_DIR/haproxy.cfg)
+        md5new=$(md5sum "$HAPROXY_CFG_DIR/haproxy.cfg")
 
         if [ "$md5old" != "$md5new" ];
         then
@@ -116,7 +116,7 @@ case $OPERATION in
             echo "No changes were made to haproxy.cfg as there was nothing to remove."
         fi
 
-        remove_lock $HAPROXY_CFG_DIR
+        remove_lock "$HAPROXY_CFG_DIR"
 
     ;;
     "--help")

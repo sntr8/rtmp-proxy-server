@@ -59,6 +59,18 @@ validate_alphanumeric() {
     fi
 }
 
+validate_numeric() {
+    # Validate that input contains only digits
+    # Usage: if validate_numeric "$input"; then ...
+    # Returns 0 if valid, 1 if invalid
+    local input="$1"
+    if [[ "$input" =~ ^[0-9]+$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 require_operation() {
     # Validate that operation parameter is provided
     # Usage: require_operation "$OPERATION"
@@ -267,7 +279,7 @@ db_get_channel_name_with_id() {
 db_get_cocaster_name_with_stream_id() {
   STREAM=$1
 
-  if [ -z $STREAM ];
+  if [ -z "$STREAM" ];
   then
       echo "Stream ID was not provided"
       return 1

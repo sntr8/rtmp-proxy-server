@@ -23,7 +23,7 @@ fi
 docker build $OPTS -t nginx-http nginx-http
 BUILD_SUCCESS=$?
 
-if [ $BUILD_SUCCESS -eq 0 ];
+if [ "$BUILD_SUCCESS" -eq 0 ];
 then
     if [ -n "$REGISTRY" ]; then
         # Tag and push to registry

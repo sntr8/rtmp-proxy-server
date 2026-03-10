@@ -51,15 +51,15 @@ SUPPORT_GROUP=$(normalize_discord_mention "$DISCORD_SUPPORT_GROUP")
 
 if [ -z "$STREAM_ID" ];
 then
-    mkdir /tmp/$SESSION_ID
-    cp $SOURCE_DIR/discord/templates/$CASE.json.template /tmp/$SESSION_ID/$CASE.json.template
+    mkdir "/tmp/$SESSION_ID"
+    cp "$SOURCE_DIR/discord/templates/$CASE.json.template" "/tmp/$SESSION_ID/$CASE.json.template"
 
     export SUPPORT_GROUP="$SUPPORT_GROUP"
 
-    envsubst < /tmp/$SESSION_ID/$CASE.json.template > /tmp/$SESSION_ID/$CASE.json
+    envsubst < "/tmp/$SESSION_ID/$CASE.json.template" > "/tmp/$SESSION_ID/$CASE.json"
 
-    curl -H "Content-Type: application/json" -X POST -d @/tmp/$SESSION_ID/$CASE.json $WEBHOOK_URL
-    rm -rf /tmp/$SESSION_ID
+    curl -H "Content-Type: application/json" -X POST -d @"/tmp/$SESSION_ID/$CASE.json" $WEBHOOK_URL
+    rm -rf "/tmp/$SESSION_ID"
 else
 
     if [ ! -z "$MESSAGE" ];
@@ -87,8 +87,8 @@ else
         CONTAINER_NAME_PREFIX="nginx-rtmp-proxy"
     fi
 
-    mkdir /tmp/$SESSION_ID
-    cp $SOURCE_DIR/discord/templates/$CASE.json.template /tmp/$SESSION_ID/$CASE.json.template
+    mkdir "/tmp/$SESSION_ID"
+    cp "$SOURCE_DIR/discord/templates/$CASE.json.template" "/tmp/$SESSION_ID/$CASE.json.template"
 
     export END_TIME="$END_TIME"
     export SHUTDOWN_TIME="$SHUTDOWN_TIME"
@@ -102,9 +102,9 @@ else
     export CONTAINER_NAME_PREFIX="$CONTAINER_NAME_PREFIX"
     export SUPPORT_GROUP="$SUPPORT_GROUP"
 
-    envsubst < /tmp/$SESSION_ID/$CASE.json.template > /tmp/$SESSION_ID/$CASE.json
+    envsubst < "/tmp/$SESSION_ID/$CASE.json.template" > "/tmp/$SESSION_ID/$CASE.json"
 
-    curl -H "Content-Type: application/json" -X POST -d @/tmp/$SESSION_ID/$CASE.json $WEBHOOK_URL
+    curl -H "Content-Type: application/json" -X POST -d @"/tmp/$SESSION_ID/$CASE.json" $WEBHOOK_URL
 
-    rm -rf /tmp/$SESSION_ID
+    rm -rf "/tmp/$SESSION_ID"
 fi
