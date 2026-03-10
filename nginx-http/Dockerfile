@@ -2,7 +2,7 @@ FROM nginx:1.23.3-alpine
 ENV TZ="Europe/Helsinki"
 
 COPY html /usr/share/nginx/html
-COPY conf /etc/nginx
+COPY conf/nginx.conf.template /etc/nginx/nginx.conf.template
 COPY scripts/entrypoint.sh /entrypoint.sh
 
 RUN rm /etc/nginx/conf.d/default.conf && \

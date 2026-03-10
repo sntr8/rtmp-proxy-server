@@ -231,7 +231,10 @@ run_container() {
             pull_container "$CONTAINER"
 
             NGINX_HTTP_IMAGE=$(get_image_name "nginx-http" "$NGINX_HTTP_VERSION")
-            docker run --rm --net stream --name nginx-http -d --add-host=host.docker.internal:host-gateway "$NGINX_HTTP_IMAGE"
+            docker run --rm --net stream --name nginx-http -d \
+                -e FQDN="$FQDN" \
+                --add-host=host.docker.internal:host-gateway \
+                "$NGINX_HTTP_IMAGE"
         ;;
         "nginx-rtmp")
             if check_running "mysql";
