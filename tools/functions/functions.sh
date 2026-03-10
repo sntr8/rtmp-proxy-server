@@ -2,6 +2,35 @@
 
 source /etc/profile
 
+# MySQL wrapper functions to reduce code duplication
+mysql_container_id() {
+    docker ps -aqf "name=mysql"
+}
+
+mysql_exec() {
+    # Execute MySQL command with default output
+    # Usage: mysql_exec "SELECT * FROM table"
+    docker exec "$(mysql_container_id)" mysql --defaults-extra-file=/creds.cnf -e "$@"
+}
+
+mysql_exec_silent() {
+    # Execute MySQL command with silent output (-sN)
+    # Usage: mysql_exec_silent "SELECT column FROM table"
+    docker exec "$(mysql_container_id)" mysql --defaults-extra-file=/creds.cnf -sN -e "$@"
+}
+
+mysql_exec_interactive() {
+    # Execute MySQL command with interactive mode (-it)
+    # Usage: mysql_exec_interactive "SELECT * FROM table"
+    docker exec -it "$(mysql_container_id)" mysql --defaults-extra-file=/creds.cnf -e "$@"
+}
+
+strip_cr() {
+    # Strip carriage return from string
+    # Usage: result=$(strip_cr "$variable")
+    echo "${1%$'\r'}"
+}
+
 db_get_caster_discord_id() {
     CASTER=$1
 
@@ -10,10 +39,8 @@ db_get_caster_discord_id() {
         echo "Caster was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        ID=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT discord_id FROM casters WHERE nick = '$CASTER'")
-        ID=${ID%$'\r'}
-        echo $ID
+        ID=$(mysql_exec_silent "SELECT discord_id FROM casters WHERE nick = '$CASTER'")
+        echo $(strip_cr "$ID")
     fi
 }
 
@@ -25,10 +52,8 @@ db_get_channel_access_token() {
         echo "Channel was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        ACCESS_TOKEN=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT access_token FROM channels WHERE name = '$CHANNEL'")
-        ACCESS_TOKEN=${ACCESS_TOKEN%$'\r'}
-        echo $ACCESS_TOKEN
+        ACCESS_TOKEN=$(mysql_exec_silent "SELECT access_token FROM channels WHERE name = '$CHANNEL'")
+        echo $(strip_cr "$ACCESS_TOKEN")
     fi
 }
 
@@ -40,10 +65,8 @@ db_get_channel_client_id() {
         echo "Channel was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        CLIENT_ID=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT client_id FROM channels WHERE name = '$CHANNEL'")
-        CLIENT_ID=${CLIENT_ID%$'\r'}
-        echo $CLIENT_ID
+        CLIENT_ID=$(mysql_exec_silent "SELECT client_id FROM channels WHERE name = '$CHANNEL'")
+        echo $(strip_cr "$CLIENT_ID")
     fi
 }
 
@@ -55,10 +78,8 @@ db_get_channel_refresh_token() {
         echo "Channel was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        REFRESH_TOKEN=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT refresh_token FROM channels WHERE name = '$CHANNEL'")
-        REFRESH_TOKEN=${REFRESH_TOKEN%$'\r'}
-        echo $REFRESH_TOKEN
+        REFRESH_TOKEN=$(mysql_exec_silent "SELECT refresh_token FROM channels WHERE name = '$CHANNEL'")
+        echo $(strip_cr "$REFRESH_TOKEN")
     fi
 }
 
@@ -70,10 +91,8 @@ db_get_channel_port() {
         echo "Channel was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        PORT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT port FROM channels WHERE name = '$CHANNEL'")
-        PORT=${PORT%$'\r'}
-        echo $PORT
+        PORT=$(mysql_exec_silent "SELECT port FROM channels WHERE name = '$CHANNEL'")
+        echo $(strip_cr "$PORT")
     fi
 }
 
@@ -85,10 +104,8 @@ db_get_caster_with_stream_id() {
         echo "Stream ID was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        CASTER=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT c.nick FROM casters c, streams s WHERE c.id = s.caster_id AND s.id = '$STREAM'")
-        CASTER=${CASTER%$'\r'}
-        echo $CASTER
+        CASTER=$(mysql_exec_silent "SELECT c.nick FROM casters c, streams s WHERE c.id = s.caster_id AND s.id = '$STREAM'")
+        echo $(strip_cr "$CASTER")
     fi
 }
 
@@ -100,10 +117,8 @@ db_get_channel_with_stream_id() {
         echo "Stream ID was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        CHANNEL=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT c.name FROM channels c, streams s WHERE c.id = s.channel_id AND s.id = '$STREAM'")
-        CHANNEL=${CHANNEL%$'\r'}
-        echo $CHANNEL
+        CHANNEL=$(mysql_exec_silent "SELECT c.name FROM channels c, streams s WHERE c.id = s.channel_id AND s.id = '$STREAM'")
+        echo $(strip_cr "$CHANNEL")
     fi
 }
 
@@ -115,10 +130,8 @@ db_get_game_with_stream_id() {
         echo "Stream ID was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        GAME=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT g.name FROM games g, streams s WHERE g.id = s.game_id AND s.id = '$STREAM'")
-        GAME=${GAME%$'\r'}
-        echo $GAME
+        GAME=$(mysql_exec_silent "SELECT g.name FROM games g, streams s WHERE g.id = s.game_id AND s.id = '$STREAM'")
+        echo $(strip_cr "$GAME")
     fi
 }
 
@@ -130,8 +143,7 @@ db_get_caster_name_with_id() {
         echo "Caster ID was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        NAME=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT nick FROM casters WHERE id = '$CASTER'")
+        NAME=$(mysql_exec_silent "SELECT nick FROM casters WHERE id = '$CASTER'")
         if [ ! -z "$NAME" ];
         then
             echo $NAME
@@ -150,8 +162,7 @@ db_get_channel_name_with_id() {
         echo "Channel ID was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        NAME=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT name FROM channels WHERE id = '$CHANNEL'")
+        NAME=$(mysql_exec_silent "SELECT name FROM channels WHERE id = '$CHANNEL'")
         if [ ! -z "$NAME" ];
         then
             echo $NAME
@@ -170,18 +181,14 @@ db_get_cocaster_name_with_stream_id() {
       echo "Stream ID was not provided"
       return 1
   else
-      MYSQL_CONTAINER_ID=$(mysql_container_id)
-      COCASTER=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT c.nick FROM casters c, streams s WHERE c.id = s.cocaster_id AND s.id = '$STREAM'")
-      COCASTER=${COCASTER%$'\r'}
-      echo $COCASTER
+      COCASTER=$(mysql_exec_silent "SELECT c.nick FROM casters c, streams s WHERE c.id = s.cocaster_id AND s.id = '$STREAM'")
+      echo $(strip_cr "$COCASTER")
   fi
 }
 
 db_get_proxychannel_count() {
-  MYSQL_CONTAINER_ID=$(mysql_container_id)
-  COUNT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT count(*) FROM channels WHERE name LIKE 'only%-proxy'")
-  COUNT=${COUNT%$'\r'}
-  echo "$COUNT"
+  COUNT=$(mysql_exec_silent "SELECT count(*) FROM channels WHERE name LIKE 'only%-proxy'")
+  echo $(strip_cr "$COUNT")
 }
 
 db_get_game_name_with_id() {
@@ -192,8 +199,7 @@ db_get_game_name_with_id() {
         echo "Game ID was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        NAME=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT name FROM games WHERE id = '$GAME'")
+        NAME=$(mysql_exec_silent "SELECT name FROM games WHERE id = '$GAME'")
         if [ ! -z "$NAME" ];
         then
             echo $NAME
@@ -212,8 +218,7 @@ db_get_game_display_name_with_name() {
         echo "Game name was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        NAME=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT display_name FROM games WHERE name = '$GAME'")
+        NAME=$(mysql_exec_silent "SELECT display_name FROM games WHERE name = '$GAME'")
         if [ ! -z "$NAME" ];
         then
             echo $NAME
@@ -232,10 +237,8 @@ db_get_stream_end_time() {
         echo "Stream ID was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        END_TIME=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT end_time FROM streams WHERE id = '$STREAM'")
-        END_TIME=${END_TIME%$'\r'}
-        echo $END_TIME
+        END_TIME=$(mysql_exec_silent "SELECT end_time FROM streams WHERE id = '$STREAM'")
+        echo $(strip_cr "$END_TIME")
     fi
 }
 
@@ -247,10 +250,8 @@ db_get_stream_start_time() {
         echo "Stream ID was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        START_TIME=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT start_time FROM streams WHERE id = '$STREAM'")
-        START_TIME=${START_TIME%$'\r'}
-        echo $START_TIME
+        START_TIME=$(mysql_exec_silent "SELECT start_time FROM streams WHERE id = '$STREAM'")
+        echo $(strip_cr "$START_TIME")
     fi
 }
 
@@ -268,10 +269,8 @@ db_get_stream_shut_down_time() {
             INTERVAL="30"
         fi
 
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        END_TIME=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT DATE_ADD(end_time, INTERVAL $INTERVAL MINUTE) FROM streams WHERE id = '$STREAM'")
-        END_TIME=${END_TIME%$'\r'}
-        echo $END_TIME
+        END_TIME=$(mysql_exec_silent "SELECT DATE_ADD(end_time, INTERVAL $INTERVAL MINUTE) FROM streams WHERE id = '$STREAM'")
+        echo $(strip_cr "$END_TIME")
     fi
 }
 
@@ -283,10 +282,8 @@ db_get_stream_title() {
         echo "Stream ID was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        TITLE=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT title FROM streams WHERE id = '$STREAM'")
-        TITLE=${TITLE%$'\r'}
-        echo $TITLE
+        TITLE=$(mysql_exec_silent "SELECT title FROM streams WHERE id = '$STREAM'")
+        echo $(strip_cr "$TITLE")
     fi
 }
 
@@ -300,14 +297,13 @@ db_is_channel_free() {
         echo "Channel ID or time was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
         if [ ! -z $EXCLUDE ];
         then
-            COUNT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT count(*) FROM streams WHERE STR_TO_DATE('$TIME','%d.%m.%Y %T') BETWEEN start_time AND end_time AND channel_id = '$ID' AND id != '$EXCLUDE'")
+            COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE STR_TO_DATE('$TIME','%d.%m.%Y %T') BETWEEN start_time AND end_time AND channel_id = '$ID' AND id != '$EXCLUDE'")
         else
-            COUNT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT count(*) FROM streams WHERE STR_TO_DATE('$TIME','%d.%m.%Y %T') BETWEEN start_time AND end_time AND channel_id = '$ID'")
+            COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE STR_TO_DATE('$TIME','%d.%m.%Y %T') BETWEEN start_time AND end_time AND channel_id = '$ID'")
         fi
-        COUNT=${COUNT%$'\r'}
+        COUNT=$(strip_cr "$COUNT")
         if [ $COUNT -eq 0 ];
         then
             return 0
@@ -334,8 +330,7 @@ db_set_channel_access_token() {
         return 1
     fi
 
-    MYSQL_CONTAINER_ID=$(mysql_container_id)
-    if docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE channels SET access_token = '$TOKEN' WHERE name = '$CHANNEL'";
+    if mysql_exec_silent "UPDATE channels SET access_token = '$TOKEN' WHERE name = '$CHANNEL'";
     then
         echo "A new token $TOKEN was written to database"
         return 0
@@ -355,15 +350,13 @@ db_stream_collides_with_another() {
         echo "Channel ID or time was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-
         if [ ! -z $EXCLUDE ];
         then
-            COUNT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT count(*) FROM streams WHERE (start_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T') or end_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T')) AND channel_id = '$ID' AND id != '$EXCLUDE';")
+            COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE (start_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T') or end_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T')) AND channel_id = '$ID' AND id != '$EXCLUDE';")
         else
-            COUNT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT count(*) FROM streams WHERE (start_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T') or end_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T')) AND channel_id = '$ID';")
+            COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE (start_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T') or end_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T')) AND channel_id = '$ID';")
         fi
-        COUNT=${COUNT%$'\r'}
+        COUNT=$(strip_cr "$COUNT")
         if [ $COUNT -eq 0 ];
         then
           return 0
@@ -381,9 +374,8 @@ db_stream_exists() {
         echo "Stream ID was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        STREAMCOUNT=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "select count(*) from streams where id = $ID")
-        STREAMCOUNT=${STREAMCOUNT%$'\r'}
+        STREAMCOUNT=$(mysql_exec_silent "select count(*) from streams where id = $ID")
+        STREAMCOUNT=$(strip_cr "$STREAMCOUNT")
         if [ $STREAMCOUNT -eq 0 ];
         then
             return 1
@@ -404,9 +396,8 @@ db_stream_is_live() {
         echo "Stream ID was not provided"
         return 1
     else
-        MYSQL_CONTAINER_ID=$(mysql_container_id)
-        LIVE=$(docker exec $MYSQL_CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT CASE WHEN live = true THEN 'true' ELSE 'false' END FROM streams WHERE id = '$ID'")
-        LIVE=${LIVE%$'\r'}
+        LIVE=$(mysql_exec_silent "SELECT CASE WHEN live = true THEN 'true' ELSE 'false' END FROM streams WHERE id = '$ID'")
+        LIVE=$(strip_cr "$LIVE")
         if [ ! -z "$LIVE" ];
         then
             if [ "$LIVE" = "true" ];
@@ -420,10 +411,6 @@ db_stream_is_live() {
             return 1
         fi
     fi
-}
-
-mysql_container_id() {
-    docker ps -aqf "name=mysql"
 }
 
 search_caster() {
@@ -443,8 +430,7 @@ search_caster() {
 search_channel() {
     CHANNEL=$1
 
-    CONTAINER_ID=$(docker ps -aqf "name=mysql")
-    CHANNEL_FOUND=$(docker exec "$CONTAINER_ID" mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT name FROM channels WHERE name = '$CHANNEL'")
+    CHANNEL_FOUND=$(mysql_exec_silent "SELECT name FROM channels WHERE name = '$CHANNEL'")
 
     if [ -z "$CHANNEL_FOUND" ];
     then

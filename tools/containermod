@@ -296,8 +296,8 @@ run_container() {
                     TWITCH_STREAM_KEY="$PREDFINED_STREAM_KEY"
                 fi
 
-                STREAM_DELAY=$(docker exec "$MYSQL_CONTAINER_ID" mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT delay FROM games WHERE name = '$GAME'")
-                STREAM_DELAY=${STREAM_DELAY%$'\r'}
+                STREAM_DELAY=$(mysql_exec_silent "SELECT delay FROM games WHERE name = '$GAME'")
+                STREAM_DELAY=$(strip_cr "$STREAM_DELAY")
             fi
 
             NGINX_RTMP_IMAGE=$(get_image_name "nginx-rtmp" "$NGINX_RTMP_VERSION")
@@ -309,8 +309,8 @@ run_container() {
             then
                 docker run --rm --net stream --name nginx-rtmp-proxy-"$CASTER" -d -e CASTER="$CASTER" -e STREAM_DELAY="0" -e PROXY_ONLY=true "$NGINX_RTMP_IMAGE"
             else
-                INTERNAL_STREAM_KEY=$(docker exec "$MYSQL_CONTAINER_ID" mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT stream_key FROM casters WHERE nick = 'internal_technical_user'")
-                INTERNAL_STREAM_KEY=${INTERNAL_STREAM_KEY%$'\r'}
+                INTERNAL_STREAM_KEY=$(mysql_exec_silent "SELECT stream_key FROM casters WHERE nick = 'internal_technical_user'")
+                INTERNAL_STREAM_KEY=$(strip_cr "$INTERNAL_STREAM_KEY")
 
                 docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e GAME="$GAME" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e INTERNAL_STREAM_KEY="$INTERNAL_STREAM_KEY" -e STREAM_DELAY="$STREAM_DELAY" -e PROXY_ONLY=false "$NGINX_RTMP_IMAGE"
             fi
@@ -480,8 +480,6 @@ then
         PROXY=true
     fi
 fi
-
-CONTAINER_ID=$(docker ps -aqf "name=mysql")
 
 case $OPERATION in
     "start")

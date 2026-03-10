@@ -12,8 +12,6 @@ then
     exit 1
 fi
 
-CONTAINER_ID=$(docker ps -aqf "name=mysql")
-
 case $OPERATION in
     "--list")
         OPTION=$2
@@ -21,13 +19,13 @@ case $OPERATION in
         if [ -z $OPTION ];
         then
             echo "Available channels:"
-            docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT name FROM channels WHERE access_token IS NOT NULL ORDER by name"
+            mysql_exec_silent "SELECT name FROM channels WHERE access_token IS NOT NULL ORDER by name"
             exit 0
         fi
 
         case $OPTION in
             "--ids")
-                docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT id, name FROM channels WHERE access_token IS NOT NULL AND name != 'proxy-only' ORDER BY id"
+                mysql_exec_interactive "SELECT id, name FROM channels WHERE access_token IS NOT NULL AND name != 'proxy-only' ORDER BY id"
                 exit 0
             ;;
             *)
@@ -100,7 +98,7 @@ case $OPERATION in
 
         case $KEY in
             "access_token")
-                if docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE channels SET access_token = '$VALUE' WHERE name = '$CHANNEL'";
+                if mysql_exec "UPDATE channels SET access_token = '$VALUE' WHERE name = '$CHANNEL'";
                 then
                     echo "Access token updated for channel $CHANNEL"
                     exit 0
@@ -109,7 +107,7 @@ case $OPERATION in
                 fi
             ;;
             "client_id")
-                if docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE channels SET client_id = '$VALUE' WHERE name = '$CHANNEL'";
+                if mysql_exec "UPDATE channels SET client_id = '$VALUE' WHERE name = '$CHANNEL'";
                 then
                     echo "Client ID updated for channel $CHANNEL"
                     exit 0
@@ -118,7 +116,7 @@ case $OPERATION in
                 fi
             ;;
             "refresh_token")
-                if docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE channels SET refresh_token = '$VALUE' WHERE name = '$CHANNEL'";
+                if mysql_exec "UPDATE channels SET refresh_token = '$VALUE' WHERE name = '$CHANNEL'";
                 then
                     echo "Refresh token updated for channel $CHANNEL"
                     exit 0
@@ -180,7 +178,7 @@ case $OPERATION in
 
         case $KEY in
             "refresh_token")
-                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT refresh_token FROM channels WHERE name = '$CHANNEL'"
+                mysql_exec_silent "SELECT refresh_token FROM channels WHERE name = '$CHANNEL'"
                 exit 0
             ;;
             *)

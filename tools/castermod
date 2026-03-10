@@ -1,5 +1,7 @@
 #!/bin/bash
+SOURCE_DIR="$(dirname "$0")"
 
+source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
 OPERATION=$1
@@ -9,8 +11,6 @@ then
     echo "$(basename "$0"): try '$(basename "$0") --help' for more information"
     exit 1
 fi
-
-CONTAINER_ID=$(docker ps -aqf "name=mysql")
 
 case $OPERATION in
     "--add")
@@ -38,7 +38,7 @@ case $OPERATION in
 
         echo "$MYSQL_USER"
 
-        docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO casters (nick, stream_key, discord_id, active, internal, date_added) VALUES ('$NICK', '$STREAM_KEY', '$DISCORD_ID', false, false, NOW())"
+        mysql_exec_interactive "INSERT INTO casters (nick, stream_key, discord_id, active, internal, date_added) VALUES ('$NICK', '$STREAM_KEY', '$DISCORD_ID', false, false, NOW())"
     ;;
     "--activate")
         NICK=$2
@@ -49,7 +49,7 @@ case $OPERATION in
             exit 1
         fi
 
-        docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE casters SET active = true WHERE nick = \"$NICK\" AND internal = false"
+        mysql_exec "UPDATE casters SET active = true WHERE nick = \"$NICK\" AND internal = false"
     ;;
     "--disable")
         NICK=$2
@@ -64,7 +64,7 @@ case $OPERATION in
         then
           echo "Caster has active containers, can't disable the access"
         else
-          docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "UPDATE casters SET active = false WHERE nick = \"$NICK\" AND internal = false"
+          mysql_exec "UPDATE casters SET active = false WHERE nick = \"$NICK\" AND internal = false"
         fi
     ;;
     "--list")
@@ -72,17 +72,17 @@ case $OPERATION in
 
         if [ -z "$OPTION" ];
         then
-            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT nick, stream_key, CASE WHEN active = false THEN 'disabled' ELSE 'active' END as active, date_added FROM casters WHERE internal = false ORDER BY nick"
+            mysql_exec_interactive "SELECT nick, stream_key, CASE WHEN active = false THEN 'disabled' ELSE 'active' END as active, date_added FROM casters WHERE internal = false ORDER BY nick"
             exit 0
         fi
 
         case $OPTION in
             "--ids")
-                docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT id, nick FROM casters WHERE internal = false ORDER BY id"
+                mysql_exec_interactive "SELECT id, nick FROM casters WHERE internal = false ORDER BY id"
                 exit 0
             ;;
             "--nicks")
-                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT nick FROM casters WHERE internal = false ORDER BY nick"
+                mysql_exec_silent "SELECT nick FROM casters WHERE internal = false ORDER BY nick"
                 exit 0
             ;;
             *)
@@ -111,7 +111,7 @@ case $OPERATION in
         read -r -p "Are you sure you want to remove $NICK? [y/N] " response
         case "$response" in
             [yY][eE][sS]|[yY])
-                docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "DELETE FROM casters WHERE nick = \"$NICK\" AND internal = false"
+                mysql_exec_interactive "DELETE FROM casters WHERE nick = \"$NICK\" AND internal = false"
                 ;;
             *)
                 exit 0

@@ -1,5 +1,7 @@
 #!/bin/bash
+SOURCE_DIR="$(dirname "$0")"
 
+source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
 OPERATION=$1
@@ -9,8 +11,6 @@ then
     echo "$(basename "$0"): try '$(basename "$0") --help' for more information"
     exit 1
 fi
-
-CONTAINER_ID=$(docker ps -aqf "name=mysql")
 
 case $OPERATION in
     "--add")
@@ -29,7 +29,7 @@ case $OPERATION in
         read -r -p "Are you sure you want to create a new game with above details? [y/N] " RESPONSE
         case "$RESPONSE" in
             [yY][eE][sS]|[yY])
-                docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO games (name, display_name, abbreviation, delay) VALUES ('$NAME', '$DISPLAYNAME', '$ABBR', $DELAY)"
+                mysql_exec_interactive "INSERT INTO games (name, display_name, abbreviation, delay) VALUES ('$NAME', '$DISPLAYNAME', '$ABBR', $DELAY)"
                 ;;
             *)
                 exit 0
@@ -41,17 +41,17 @@ case $OPERATION in
 
         if [ -z "$OPTION" ];
         then
-            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT name, delay FROM games ORDER BY name"
+            mysql_exec_interactive "SELECT name, delay FROM games ORDER BY name"
             exit 0
         fi
 
         case $OPTION in
             "--ids")
-                docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT id, name FROM games ORDER BY id"
+                mysql_exec_interactive "SELECT id, name FROM games ORDER BY id"
                 exit 0
             ;;
             "--names")
-                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT name FROM games ORDER BY name"
+                mysql_exec_silent "SELECT name FROM games ORDER BY name"
                 exit 0
             ;;
             *)

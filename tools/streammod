@@ -67,8 +67,6 @@ then
     exit 1
 fi
 
-CONTAINER_ID=$(docker ps -aqf "name=mysql")
-
 case $OPERATION in
     "--add")
         echo "Available casters: "
@@ -188,9 +186,9 @@ case $OPERATION in
             [yY][eE][sS]|[yY])
                 if [ ! -z $COCASTER ];
                 then
-                  docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`cocaster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $COCASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
+                  mysql_exec "INSERT INTO streams (\`caster_id\`, \`cocaster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $COCASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
                 else
-                  docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
+                  mysql_exec "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
                 fi
                 if [ $? -eq 0 ];
                 then
@@ -303,12 +301,12 @@ case $OPERATION in
         OPTION=$2
         if [ -z $OPTION ];
         then
-            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND s.live = true"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND s.live = true"
             exit 0
         else
             case $OPTION in
                 "--ids")
-                    docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT id FROM streams WHERE live = true"
+                    mysql_exec_interactive "SELECT id FROM streams WHERE live = true"
                     exit 0
                 ;;
             esac
@@ -319,14 +317,14 @@ case $OPERATION in
         if [ -z $OPTION ];
         then
             echo "Upcoming streams: "
-            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, (SELECT IFNULL(cc.nick, \"Not set\") FROM casters cc, streams st WHERE cc.id = st.cocaster_id AND st.id = s.id) as cocaster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND ch.access_token IS NOT NULL and start_time >= NOW() ORDER BY start_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, (SELECT IFNULL(cc.nick, \"Not set\") FROM casters cc, streams st WHERE cc.id = st.cocaster_id AND st.id = s.id) as cocaster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND ch.access_token IS NOT NULL and start_time >= NOW() ORDER BY start_time"
             echo "Upcoming proxies"
-            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, s.start_time, s.end_time FROM casters ca, channels ch, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND ch.name LIKE '%-proxy' AND start_time >= NOW() AND ch.access_token IS NULL ORDER BY start_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, s.start_time, s.end_time FROM casters ca, channels ch, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND ch.name LIKE '%-proxy' AND start_time >= NOW() AND ch.access_token IS NULL ORDER BY start_time"
             exit 0
         else
             case $OPTION in
                 "--ids")
-                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT id FROM streams WHERE start_time >= NOW()"
+                    mysql_exec_silent "SELECT id FROM streams WHERE start_time >= NOW()"
                     exit 0
                 ;;
             esac
@@ -367,7 +365,7 @@ case $OPERATION in
                     exit 1
                 fi
 
-                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET caster_id = $EDIT_CASTER WHERE id = $STREAM_ID"
+                mysql_exec_silent "UPDATE streams SET caster_id = $EDIT_CASTER WHERE id = $STREAM_ID"
                 echo "Updated to the database"
             ;;
         esac
@@ -389,7 +387,7 @@ case $OPERATION in
                     exit 1
                 fi
 
-                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET channel_id = $EDIT_CHANNEL WHERE id = $STREAM_ID"
+                mysql_exec_silent "UPDATE streams SET channel_id = $EDIT_CHANNEL WHERE id = $STREAM_ID"
                 echo "Updated to the database"
             ;;
         esac
@@ -417,14 +415,14 @@ No changes: N
                         exit 1
                     fi
 
-                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET cocaster_id = $EDIT_COCASTER WHERE id = $STREAM_ID"
+                    mysql_exec_silent "UPDATE streams SET cocaster_id = $EDIT_COCASTER WHERE id = $STREAM_ID"
                     echo "Updated to the database"
                 ;;
                 [dD][eE][lL][eE][tT][eE]|[d])
                     read -r -p "Confirm delete co-caster container from the stream? [y/N] " RESPONSE_CC_CONFIRM
                     case "$RESPONSE_CC_CONFIRM" in
                         [yY][eE][sS]|[yY])
-                            docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET cocaster_id = null WHERE id = $STREAM_ID"
+                            mysql_exec_silent "UPDATE streams SET cocaster_id = null WHERE id = $STREAM_ID"
                             echo "Updated to the database"
                         ;;
                     esac
@@ -444,7 +442,7 @@ No changes: N
                         exit 1
                     fi
 
-                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET cocaster_id = $EDIT_COCASTER WHERE id = $STREAM_ID"
+                    mysql_exec_silent "UPDATE streams SET cocaster_id = $EDIT_COCASTER WHERE id = $STREAM_ID"
                     echo "Updated to the database"
                 ;;
             esac
@@ -459,7 +457,7 @@ No changes: N
             [yY][eE][sS]|[yY])
                 read -r -p "Twitch title for the stream?: " EDIT_TITLE
 
-                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET title = '$EDIT_TITLE' WHERE id = $STREAM_ID"
+                mysql_exec_silent "UPDATE streams SET title = '$EDIT_TITLE' WHERE id = $STREAM_ID"
                 echo "Updated to the database"
             ;;
         esac
@@ -500,7 +498,7 @@ No changes: N
 
                 START_TIME="$EDIT_START_TIME_MYSQL"
 
-                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET start_time = STR_TO_DATE('$EDIT_START_TIME_MYSQL','%Y-%m-%d %H:%i') WHERE id = $STREAM_ID"
+                mysql_exec_silent "UPDATE streams SET start_time = STR_TO_DATE('$EDIT_START_TIME_MYSQL','%Y-%m-%d %H:%i') WHERE id = $STREAM_ID"
                 echo "Updated to the database"
             ;;
         esac
@@ -539,7 +537,7 @@ No changes: N
                     exit 1
                 fi
 
-                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET end_time = STR_TO_DATE('$EDIT_END_TIME_MYSQL','%Y-%m-%d %H:%i') WHERE id = $STREAM_ID"
+                mysql_exec_silent "UPDATE streams SET end_time = STR_TO_DATE('$EDIT_END_TIME_MYSQL','%Y-%m-%d %H:%i') WHERE id = $STREAM_ID"
                 echo "Updated to the database"
             ;;
         esac
@@ -578,14 +576,14 @@ No changes: N
         if [ -z $OPTION ];
         then
             echo "Starting streams:"
-            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) ORDER BY start_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) ORDER BY start_time"
             echo "Starting proxies:"
-            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, s.start_time, s.end_time FROM casters ca, channels ch, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) ORDER BY start_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, s.start_time, s.end_time FROM casters ca, channels ch, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) ORDER BY start_time"
             exit 0
         else
             case $OPTION in
                 "--ids")
-                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT id FROM streams WHERE start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) AND skip = false"
+                    mysql_exec_silent "SELECT id FROM streams WHERE start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) AND skip = false"
                     exit 0
                 ;;
                 *)
@@ -599,12 +597,12 @@ No changes: N
         OPTION=$2
         if [ -z $OPTION ];
         then
-            docker exec -it $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -e "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND end_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) ORDER BY end_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND end_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 30 MINUTE) ORDER BY end_time"
             exit 0
         else
             case $OPTION in
                 "--ids")
-                    docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT id FROM streams WHERE end_time BETWEEN DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND DATE_ADD(NOW(), INTERVAL 30 MINUTE)"
+                    mysql_exec_silent "SELECT id FROM streams WHERE end_time BETWEEN DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND DATE_ADD(NOW(), INTERVAL 30 MINUTE)"
                     exit 0
                 ;;
                 *)
@@ -621,7 +619,7 @@ No changes: N
             echo "Warning time not set. Try '$(basename "$0") --help' for more information."
             exit 1
         else
-            docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT id FROM streams WHERE DATE_FORMAT(DATE_ADD(NOW(), INTERVAL $OPTION MINUTE), '%d.%m.%Y %H:%i') = DATE_FORMAT(end_time, '%d.%m.%Y %H:%i')"
+            mysql_exec_silent "SELECT id FROM streams WHERE DATE_FORMAT(DATE_ADD(NOW(), INTERVAL $OPTION MINUTE), '%d.%m.%Y %H:%i') = DATE_FORMAT(end_time, '%d.%m.%Y %H:%i')"
             exit 0
         fi
     ;;
@@ -632,7 +630,7 @@ No changes: N
             echo "Warning time not set. Try '$(basename "$0") --help' for more information."
             exit 1
         else
-            docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT id FROM streams WHERE DATE_FORMAT(DATE_SUB(NOW(), INTERVAL $OPTION MINUTE), '%d.%m.%Y %H:%i') = DATE_FORMAT(end_time, '%d.%m.%Y %H:%i')"
+            mysql_exec_silent "SELECT id FROM streams WHERE DATE_FORMAT(DATE_SUB(NOW(), INTERVAL $OPTION MINUTE), '%d.%m.%Y %H:%i') = DATE_FORMAT(end_time, '%d.%m.%Y %H:%i')"
             exit 0
         fi
     ;;
@@ -644,7 +642,7 @@ No changes: N
             exit 1
         fi
 
-        docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET end_time = DATE_ADD(end_time, INTERVAL 30 MINUTE) WHERE id = '$OPTION'"
+        mysql_exec_silent "UPDATE streams SET end_time = DATE_ADD(end_time, INTERVAL 30 MINUTE) WHERE id = '$OPTION'"
     ;;
     "--skip")
         OPTION=$2
@@ -654,7 +652,7 @@ No changes: N
             exit 1
         fi
 
-        docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET skip = true WHERE id = '$OPTION'"
+        mysql_exec_silent "UPDATE streams SET skip = true WHERE id = '$OPTION'"
     ;;
     "--unskip")
         OPTION=$2
@@ -664,7 +662,7 @@ No changes: N
             exit 1
         fi
 
-        docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET skip = false WHERE id = '$OPTION'"
+        mysql_exec_silent "UPDATE streams SET skip = false WHERE id = '$OPTION'"
     ;;
     "--help")
         echo "$(basename "$0") -- Schedule and manage RTMP streams
