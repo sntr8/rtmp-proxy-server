@@ -12,6 +12,6 @@ env_vars:
   GIT_USER: "{{ git_user }}"
   GIT_TOKEN: "{{ git_token }}"
   IMAGE_VERSION: "{{ image_version }}"
-  DISCORD_WEBHOOK_PUBG: "{{ discord_webhook_pubg }}"
-  DISCORD_WEBHOOK_OTHERS: "{{ discord_webhook_others }}"
+  DISCORD_WEBHOOK: "{{ discord_webhook }}"
+  DISCORD_SUPPORT_GROUP: "{{ discord_support_group }}"
   CONFIG_BRANCH: "{{ config_branch }}"

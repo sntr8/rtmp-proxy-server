@@ -7,8 +7,8 @@ git_user: stream
 git_token: "{{ vault_git_token }}"
 image_version: v1.6
 config_branch: master
-discord_webhook_pubg: "{{ vault_discord_webhook_pubg }}"
-discord_webhook_others: "{{ vault_discord_webhook_others }}"
+discord_webhook: "{{ vault_discord_webhook }}"
+discord_support_group: 
 
 image_versions:
   HAPROXY_VERSION: "$IMAGE_VERSION"

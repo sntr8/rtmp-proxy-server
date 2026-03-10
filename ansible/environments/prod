@@ -5,7 +5,7 @@ all:
       children:
         stream:
           hosts:
-            stream.kanaliiga.fi:
-              ansible_host: 62.204.14.103
-              ansible_user: sntr
+            prod.example.com:
+              ansible_host: <ip address>
+              ansible_user: <username>
               ansible_python_interpreter: auto
