@@ -243,7 +243,7 @@ case $OPERATION in
     ;;
     "--live")
         OPTION=$2
-        if [ -z $OPTION ];
+        if [ -z "$OPTION" ];
         then
             mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND s.live = true"
             exit 0
@@ -258,7 +258,7 @@ case $OPERATION in
     ;;
     "--upcoming")
         OPTION=$2
-        if [ -z $OPTION ];
+        if [ -z "$OPTION" ];
         then
             echo "Upcoming streams: "
             mysql_exec_interactive "SELECT s.id, ca.nick as caster, (SELECT IFNULL(cc.nick, \"Not set\") FROM casters cc, streams st WHERE cc.id = st.cocaster_id AND st.id = s.id) as cocaster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND ch.access_token IS NOT NULL and start_time >= NOW() ORDER BY start_time"
@@ -276,7 +276,7 @@ case $OPERATION in
     ;;
     "--update")
         STREAM_ID=$2
-        if [ -z $STREAM_ID ];
+        if [ -z "$STREAM_ID" ];
         then
             echo "Stream id was not given. Try '$(basename "$0") --help' for more information."
             exit 1
@@ -491,13 +491,13 @@ No changes: N
     ;;
     "--set")
         OPTION=$2
-        if [ -z $OPTION ];
+        if [ -z "$OPTION" ];
         then
             echo "No option was provided. Try '$(basename "$0") --help' for more information."
             exit 1
         else
             ID=$3
-            if [ -z $ID ];
+            if [ -z "$ID" ];
             then
                 echo "No Stream ID was provided. Try '$(basename "$0") --help' for more information."
                 exit 1
@@ -517,7 +517,7 @@ No changes: N
     ;;
     "--starting")
         OPTION=$2
-        if [ -z $OPTION ];
+        if [ -z "$OPTION" ];
         then
             echo "Starting streams:"
             mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) ORDER BY start_time"
@@ -539,7 +539,7 @@ No changes: N
     ;;
     "--ending")
         OPTION=$2
-        if [ -z $OPTION ];
+        if [ -z "$OPTION" ];
         then
             mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND end_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) ORDER BY end_time"
             exit 0
@@ -558,7 +558,7 @@ No changes: N
     ;;
     "--warnings")
         OPTION=$2
-        if [ -z $OPTION ];
+        if [ -z "$OPTION" ];
         then
             echo "Warning time not set. Try '$(basename "$0") --help' for more information."
             exit 1
@@ -569,7 +569,7 @@ No changes: N
     ;;
     "--ended")
         OPTION=$2
-        if [ -z $OPTION ];
+        if [ -z "$OPTION" ];
         then
             echo "Warning time not set. Try '$(basename "$0") --help' for more information."
             exit 1
@@ -580,7 +580,7 @@ No changes: N
     ;;
     "--extend")
         OPTION=$2
-        if [ -z $OPTION ];
+        if [ -z "$OPTION" ];
         then
             echo "Stream id was not given. Try '$(basename "$0") --help' for more information."
             exit 1
@@ -590,7 +590,7 @@ No changes: N
     ;;
     "--skip")
         OPTION=$2
-        if [ -z $OPTION ];
+        if [ -z "$OPTION" ];
         then
             echo "Stream id was not given. Try '$(basename "$0") --help' for more information."
             exit 1
@@ -600,7 +600,7 @@ No changes: N
     ;;
     "--unskip")
         OPTION=$2
-        if [ -z $OPTION ];
+        if [ -z "$OPTION" ];
         then
             echo "Stream id was not given. Try '$(basename "$0") --help' for more information."
             exit 1

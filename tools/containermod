@@ -283,7 +283,7 @@ run_container() {
                 fi
 
                 MYSQL_CONTAINER_ID=$(docker ps -aqf "name=mysql")
-                if [ -z $PREDFINED_STREAM_KEY ];
+                if [ -z "$PREDFINED_STREAM_KEY" ];
                 then
                     echo "Fetching stream key from the Twitch API"
                     if ! TWITCH_STREAM_KEY=$(twitch_get_stream_key $CHANNEL);

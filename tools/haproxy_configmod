@@ -35,13 +35,13 @@ case $OPERATION in
         CASTER=$2
         CHANNEL=$3
 
-        if [ -z $CASTER ];
+        if [ -z "$CASTER" ];
         then
             echo "[ERROR]: Caster is missing. Try '$(basename "$0") --help' for more information"
             exit 1
         fi
 
-        if [ -z $CHANNEL ];
+        if [ -z "$CHANNEL" ];
         then
             echo "[ERROR]: Channel is missing. Try '$(basename "$0") --help' for more information"
             exit 1
@@ -93,7 +93,7 @@ case $OPERATION in
     "--remove")
         CASTER=$2
 
-        if [ -z $CASTER ];
+        if [ -z "$CASTER" ];
         then
             echo "[ERROR]: Caster is missing. Try '$(basename "$0") --help' for more information"
             exit 1

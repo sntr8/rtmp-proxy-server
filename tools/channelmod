@@ -11,7 +11,7 @@ case $OPERATION in
     "--list")
         OPTION=$2
 
-        if [ -z $OPTION ];
+        if [ -z "$OPTION" ];
         then
             echo "Available channels:"
             mysql_exec_silent "SELECT name FROM channels WHERE access_token IS NOT NULL ORDER by name"
@@ -31,7 +31,7 @@ case $OPERATION in
     "--get-id")
         CHANNEL_NAME="$2"
 
-        if [ -z $CHANNEL_NAME ];
+        if [ -z "$CHANNEL_NAME" ];
         then
             echo "Channel name was not provided"
             exit 1
@@ -43,7 +43,7 @@ case $OPERATION in
     "--refresh-tokens")
         CHANNEL=$2
 
-        if [ -z $CHANNEL ];
+        if [ -z "$CHANNEL" ];
         then
             echo "Channel was not given. Try '$(basename "$0") --help' for more information."
             exit 1
@@ -68,7 +68,7 @@ case $OPERATION in
         KEY=$3
         VALUE=$4
 
-        if [ -z $CHANNEL ];
+        if [ -z "$CHANNEL" ];
         then
             echo "Channel was not given. Try '$(basename "$0") --help' for more information."
             exit 1
@@ -79,13 +79,13 @@ case $OPERATION in
             exit 1
         fi
 
-        if [ -z $KEY ];
+        if [ -z "$KEY" ];
         then
             echo "Key-value pair was not given. Try '$(basename "$0") --help' for more information."
             exit 1
         fi
 
-        if [ -z $VALUE ];
+        if [ -z "$VALUE" ];
         then
             echo "Key-value pair was not given. Try '$(basename "$0") --help' for more information."
             exit 1
@@ -128,7 +128,7 @@ case $OPERATION in
     "--test-tokens")
         CHANNEL=$2
 
-        if [ -z $CHANNEL ];
+        if [ -z "$CHANNEL" ];
         then
             echo "Channel was not given. Try '$(basename "$0") --help' for more information."
             exit 1
@@ -154,7 +154,7 @@ case $OPERATION in
         CHANNEL=$2
         KEY=$3
 
-        if [ -z $CHANNEL ];
+        if [ -z "$CHANNEL" ];
         then
             echo "Channel was not given. Try '$(basename "$0") --help' for more information."
             exit 1
@@ -165,7 +165,7 @@ case $OPERATION in
             exit 1
         fi
 
-        if [ -z $KEY ];
+        if [ -z "$KEY" ];
         then
             echo "Key was not given. Try '$(basename "$0") --help' for more information."
             exit 1
