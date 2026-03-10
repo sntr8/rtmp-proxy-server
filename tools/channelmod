@@ -5,12 +5,7 @@ source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
 OPERATION=$1
-
-if [ -z "$OPERATION" ];
-then
-    echo "$(basename "$0"): try '$(basename "$0") --help' for more information"
-    exit 1
-fi
+require_operation "$OPERATION"
 
 case $OPERATION in
     "--list")

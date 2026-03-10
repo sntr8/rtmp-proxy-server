@@ -31,6 +31,16 @@ strip_cr() {
     echo "${1%$'\r'}"
 }
 
+require_operation() {
+    # Validate that operation parameter is provided
+    # Usage: require_operation "$OPERATION"
+    if [ -z "$1" ];
+    then
+        echo "$(basename "$0"): try '$(basename "$0") --help' for more information"
+        exit 1
+    fi
+}
+
 db_get_caster_discord_id() {
     CASTER=$1
 

@@ -468,11 +468,7 @@ then
     exit 1
 fi
 
-if [ -z "$OPERATION" ];
-then
-    echo "$(basename "$0"): operation required. Try '$(basename "$0") --help' for more information"
-    exit 1
-fi
+require_operation "$OPERATION"
 
 if [ ! -z $CHANNEL ];
 then

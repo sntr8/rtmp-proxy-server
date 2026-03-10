@@ -62,11 +62,7 @@ OPERATION=$1
 REGEXP_EU='^([0-2][0-9]|3[0-1])\.(0[1-9]|1[0-2])\.[0-9]{4}\s([01]?[0-9]|2[0-3]):[0-5][0-9]$'
 REGEXP_US='^(0[1-9]|1[0-2])/([0-2][0-9]|3[0-1])/[0-9]{4}\s([01]?[0-9]|2[0-3]):[0-5][0-9]$'
 
-if [ -z "$OPERATION" ];
-then
-    echo "$(basename "$0"): try '$(basename "$0") --help' for more information"
-    exit 1
-fi
+require_operation "$OPERATION"
 
 case $OPERATION in
     "--add")
