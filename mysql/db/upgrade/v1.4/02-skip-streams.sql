@@ -1,1 +1,0 @@
-ALTER TABLE streams ADD `skip` BOOLEAN NOT NULL AFTER `live`;
