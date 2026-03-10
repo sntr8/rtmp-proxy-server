@@ -334,8 +334,8 @@ Komento kysyy interaktiivisesti:
 - **Kanava:** Twitch-kanava tai proxy-kanava
 - **Peli:** Pelin nimi (ei tarvita proxy-konteille)
 - **Otsikko:** Twitchiin asetettava striimin otsikko
-- **Alkamisaika:** Formaatti `DD.MM.YYYY HH:MM` (ei voi olla menneisyydessä)
-- **Päättymisaika:** Formaatti `DD.MM.YYYY HH:MM` (pakko olla alkamisajan jälkeen)
+- **Alkamisaika:** Formaatti `DD.MM.YYYY HH:MM` (EU) tai `MM/DD/YYYY HH:MM` (US) - ei voi olla menneisyydessä
+- **Päättymisaika:** Formaatti `DD.MM.YYYY HH:MM` (EU) tai `MM/DD/YYYY HH:MM` (US) - pakko olla alkamisajan jälkeen
 
 **HUOM:** Skripti ei automaattisesti tarkista päällekkäisiä varauksia! Tarkista käsin: `streammod --upcoming`
 

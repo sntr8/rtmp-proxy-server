@@ -4,13 +4,52 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
-# Validate datetime format using date command
+# Validate and convert datetime to MySQL format
+# Accepts: DD.MM.YYYY HH:MM (EU) or MM/DD/YYYY HH:MM (US)
+# Returns: YYYY-MM-DD HH:MM (MySQL format) or empty string on error
+convert_to_mysql_datetime() {
+    local input="$1"
+    local result=""
+
+    # Try European format (DD.MM.YYYY HH:MM) - macOS
+    result=$(date -j -f "%d.%m.%Y %H:%M" "$input" "+%Y-%m-%d %H:%M" 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        echo "$result"
+        return 0
+    fi
+
+    # Try European format - Linux
+    result=$(date -d "$input" "+%Y-%m-%d %H:%M" 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        echo "$result"
+        return 0
+    fi
+
+    # Try US format (MM/DD/YYYY HH:MM) - macOS
+    result=$(date -j -f "%m/%d/%Y %H:%M" "$input" "+%Y-%m-%d %H:%M" 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        echo "$result"
+        return 0
+    fi
+
+    # Try US format - Linux (with proper parsing)
+    if [[ "$input" =~ ^([0-9]{2})/([0-9]{2})/([0-9]{4})\ ([0-9]{2}:[0-9]{2})$ ]]; then
+        # Convert MM/DD/YYYY HH:MM to YYYY-MM-DD HH:MM for Linux date command
+        local us_format="${BASH_REMATCH[3]}-${BASH_REMATCH[1]}-${BASH_REMATCH[2]} ${BASH_REMATCH[4]}"
+        result=$(date -d "$us_format" "+%Y-%m-%d %H:%M" 2>/dev/null)
+        if [ $? -eq 0 ]; then
+            echo "$result"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+# Validate datetime format (accepts both EU and US formats)
 validate_datetime() {
     local input="$1"
-    # Try to parse the date - if it fails, date will return an error
-    # macOS uses -j flag, Linux doesn't need it - try both
-    if date -j -f "%d.%m.%Y %H:%M" "$input" "+%Y-%m-%d %H:%M:%S" 2>/dev/null >/dev/null || \
-       date -d "$input" "+%Y-%m-%d %H:%M:%S" 2>/dev/null >/dev/null; then
+    if convert_to_mysql_datetime "$input" >/dev/null; then
         return 0
     else
         return 1
@@ -18,7 +57,9 @@ validate_datetime() {
 }
 
 OPERATION=$1
-REGEXP='^([0-2][0-9]|3[0-1])\.(0[1-9]|1[0-2])\.[0-9]{4}\s([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+# Accept both EU (DD.MM.YYYY HH:MM) and US (MM/DD/YYYY HH:MM) formats
+REGEXP_EU='^([0-2][0-9]|3[0-1])\.(0[1-9]|1[0-2])\.[0-9]{4}\s([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+REGEXP_US='^(0[1-9]|1[0-2])/([0-2][0-9]|3[0-1])/[0-9]{4}\s([01]?[0-9]|2[0-3]):[0-5][0-9]$'
 
 if [ -z "$OPERATION" ];
 then
@@ -74,21 +115,22 @@ case $OPERATION in
         fi
 
         read -r -p "Twitch title for the stream?: " TITLE
-        read -r -p "Start time of the stream? (Format: DD.MM.YYYY HH:MM): " START_TIME
+        read -r -p "Start time of the stream? (Format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM): " START_TIME
 
-        if ! [[ "$START_TIME" =~ $REGEXP ]];
+        if ! [[ "$START_TIME" =~ $REGEXP_EU ]] && ! [[ "$START_TIME" =~ $REGEXP_US ]];
         then
-            echo "Start time is not in a valid format"
+            echo "Start time is not in a valid format (use DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM)"
             exit 1
         fi
 
-        if ! validate_datetime "$START_TIME";
+        START_TIME_MYSQL=$(convert_to_mysql_datetime "$START_TIME")
+        if [ -z "$START_TIME_MYSQL" ];
         then
             echo "Start time is not a valid date/time"
             exit 1
         fi
 
-        if ! db_is_channel_free "$START_TIME" $CHANNEL;
+        if ! db_is_channel_free "$START_TIME_MYSQL" $CHANNEL;
         then
             echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
             exit 1
@@ -96,27 +138,28 @@ case $OPERATION in
 
         echo "Container will be started 30 minutes before the stream, if possible."
 
-        read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM): " END_TIME
+        read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM): " END_TIME
 
-        if ! [[ "$END_TIME" =~ $REGEXP ]];
+        if ! [[ "$END_TIME" =~ $REGEXP_EU ]] && ! [[ "$END_TIME" =~ $REGEXP_US ]];
         then
-            echo "End time is not in a valid format"
+            echo "End time is not in a valid format (use DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM)"
             exit 1
         fi
 
-        if ! validate_datetime "$END_TIME";
+        END_TIME_MYSQL=$(convert_to_mysql_datetime "$END_TIME")
+        if [ -z "$END_TIME_MYSQL" ];
         then
             echo "End time is not a valid date/time"
             exit 1
         fi
 
-        if ! db_is_channel_free "$END_TIME" $CHANNEL;
+        if ! db_is_channel_free "$END_TIME_MYSQL" $CHANNEL;
         then
             echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
             exit 1
         fi
 
-        if ! db_stream_collides_with_another "$CHANNEL" "$START_TIME" "$END_TIME";
+        if ! db_stream_collides_with_another "$CHANNEL" "$START_TIME_MYSQL" "$END_TIME_MYSQL";
         then
             echo "ERROR: The requested channel is already occupied during the requested timespan. Can't schedule a stream."
             exit 1
@@ -131,8 +174,8 @@ case $OPERATION in
     Channel: $(db_get_channel_name_with_id $CHANNEL)
     Game: $(db_get_game_name_with_id $GAME)
     Twitch title: $TITLE
-    Start time: $START_TIME
-    End time: $END_TIME"
+    Start time: $START_TIME_MYSQL
+    End time: $END_TIME_MYSQL"
         if [ ! -z $COCASTER ];
         then
             echo "    Also adding proxy container for co-caster: $(db_get_caster_name_with_id $COCASTER)"
@@ -145,9 +188,9 @@ case $OPERATION in
             [yY][eE][sS]|[yY])
                 if [ ! -z $COCASTER ];
                 then
-                  docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`cocaster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $COCASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %H:%i'), STR_TO_DATE('$END_TIME','%d.%m.%Y %H:%i'))"
+                  docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`cocaster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $COCASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
                 else
-                  docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %H:%i'), STR_TO_DATE('$END_TIME','%d.%m.%Y %H:%i'))"
+                  docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
                 fi
                 if [ $? -eq 0 ];
                 then
@@ -174,15 +217,16 @@ case $OPERATION in
             exit 1
         fi
 
-        read -r -p "Start time of the stream? (Format: DD.MM.YYYY HH:MM): " START_TIME
+        read -r -p "Start time of the stream? (Format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM): " START_TIME
 
-        if ! [[ "$START_TIME" =~ $REGEXP ]];
+        if ! [[ "$START_TIME" =~ $REGEXP_EU ]] && ! [[ "$START_TIME" =~ $REGEXP_US ]];
         then
-            echo "Start time is not in a valid format"
+            echo "Start time is not in a valid format (use DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM)"
             exit 1
         fi
 
-        if ! validate_datetime "$START_TIME";
+        START_TIME_MYSQL=$(convert_to_mysql_datetime "$START_TIME")
+        if [ -z "$START_TIME_MYSQL" ];
         then
             echo "Start time is not a valid date/time"
             exit 1
@@ -190,15 +234,16 @@ case $OPERATION in
 
         echo "Container will be started 30 minutes before the stream, if possible."
 
-        read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM): " END_TIME
+        read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM): " END_TIME
 
-        if ! [[ "$END_TIME" =~ $REGEXP ]];
+        if ! [[ "$END_TIME" =~ $REGEXP_EU ]] && ! [[ "$END_TIME" =~ $REGEXP_US ]];
         then
-            echo "End time is not in a valid format"
+            echo "End time is not in a valid format (use DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM)"
             exit 1
         fi
 
-        if ! validate_datetime "$END_TIME";
+        END_TIME_MYSQL=$(convert_to_mysql_datetime "$END_TIME")
+        if [ -z "$END_TIME_MYSQL" ];
         then
             echo "End time is not a valid date/time"
             exit 1
@@ -211,9 +256,9 @@ case $OPERATION in
         for (( i=1; i <= PROXY_COUNT; i++ ))
         do
           I_CHANNEL_ID=$(channelmod --get-id "only$i-proxy")
-          if db_is_channel_free "$START_TIME" $I_CHANNEL_ID;
+          if db_is_channel_free "$START_TIME_MYSQL" $I_CHANNEL_ID;
           then
-            if db_is_channel_free "$END_TIME" $I_CHANNEL_ID;
+            if db_is_channel_free "$END_TIME_MYSQL" $I_CHANNEL_ID;
             then
               PROXY_CHANNEL_ID=$I_CHANNEL_ID
               break
@@ -232,14 +277,14 @@ case $OPERATION in
         echo "Creating a proxy server with details:
     Caster: $(db_get_caster_name_with_id $CASTER)
     Channel: $(db_get_channel_name_with_id $PROXY_CHANNEL_ID)
-    Start time: $START_TIME
-    End time: $END_TIME
+    Start time: $START_TIME_MYSQL
+    End time: $END_TIME_MYSQL
         "
 
         read -r -p "Are you sure you want to create a proxy server with above details? [y/N] " RESPONSE
         case "$RESPONSE" in
             [yY][eE][sS]|[yY])
-                docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $PROXY_CHANNEL_ID, false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %H:%i'), STR_TO_DATE('$END_TIME','%d.%m.%Y %H:%i'))"
+                docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $PROXY_CHANNEL_ID, false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
                 if [ $? -eq 0 ];
                 then
                     exit 0
@@ -426,35 +471,36 @@ No changes: N
 
         case "$RESPONSE_START" in
             [yY][eE][sS]|[yY])
-                read -r -p "Start time of the stream? (Format: DD.MM.YYYY HH:MM): " EDIT_START_TIME
+                read -r -p "Start time of the stream? (Format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM): " EDIT_START_TIME
 
-                if ! [[ "$EDIT_START_TIME" =~ $REGEXP ]];
+                if ! [[ "$EDIT_START_TIME" =~ $REGEXP_EU ]] && ! [[ "$EDIT_START_TIME" =~ $REGEXP_US ]];
                 then
-                    echo "Time is not in a valid format"
+                    echo "Time is not in a valid format (use DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM)"
                     exit 1
                 fi
 
-                if ! validate_datetime "$EDIT_START_TIME";
+                EDIT_START_TIME_MYSQL=$(convert_to_mysql_datetime "$EDIT_START_TIME")
+                if [ -z "$EDIT_START_TIME_MYSQL" ];
                 then
                     echo "Time is not a valid date/time"
                     exit 1
                 fi
 
-                if ! db_is_channel_free "$EDIT_START_TIME" $(channelmod --get-id $CHANNEL_NAME) $STREAM_ID;
+                if ! db_is_channel_free "$EDIT_START_TIME_MYSQL" $(channelmod --get-id $CHANNEL_NAME) $STREAM_ID;
                 then
                   echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
                   exit 1
                 fi
 
-                if ! db_stream_collides_with_another "$(channelmod --get-id $CHANNEL_NAME)" "$EDIT_START_TIME" "$END_TIME" $STREAM_ID;
+                if ! db_stream_collides_with_another "$(channelmod --get-id $CHANNEL_NAME)" "$EDIT_START_TIME_MYSQL" "$END_TIME" $STREAM_ID;
                 then
                     echo "ERROR: The requested channel is already occupied during the requested timespan. Can't schedule a stream."
                     exit 1
                 fi
 
-                START_TIME="$EDIT_START_TIME"
+                START_TIME="$EDIT_START_TIME_MYSQL"
 
-                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET start_time = STR_TO_DATE('$EDIT_START_TIME','%d.%m.%Y %H:%i') WHERE id = $STREAM_ID"
+                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET start_time = STR_TO_DATE('$EDIT_START_TIME_MYSQL','%Y-%m-%d %H:%i') WHERE id = $STREAM_ID"
                 echo "Updated to the database"
             ;;
         esac
@@ -466,33 +512,34 @@ No changes: N
 
         case "$RESPONSE_END" in
             [yY][eE][sS]|[yY])
-                read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM): " EDIT_END_TIME
+                read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM): " EDIT_END_TIME
 
-                if ! [[ "$EDIT_END_TIME" =~ $REGEXP ]];
+                if ! [[ "$EDIT_END_TIME" =~ $REGEXP_EU ]] && ! [[ "$EDIT_END_TIME" =~ $REGEXP_US ]];
                 then
-                    echo "Time is not in a valid format"
+                    echo "Time is not in a valid format (use DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM)"
                     exit 1
                 fi
 
-                if ! validate_datetime "$EDIT_END_TIME";
+                EDIT_END_TIME_MYSQL=$(convert_to_mysql_datetime "$EDIT_END_TIME")
+                if [ -z "$EDIT_END_TIME_MYSQL" ];
                 then
                     echo "Time is not a valid date/time"
                     exit 1
                 fi
 
-                if ! db_is_channel_free "$EDIT_END_TIME" $(channelmod --get-id $CHANNEL_NAME) $STREAM_ID;
+                if ! db_is_channel_free "$EDIT_END_TIME_MYSQL" $(channelmod --get-id $CHANNEL_NAME) $STREAM_ID;
                 then
                   echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
                   exit 1
                 fi
 
-                if ! db_stream_collides_with_another "$(channelmod --get-id $CHANNEL_NAME)" "$START_TIME" "$EDIT_END_TIME" $STREAM_ID;
+                if ! db_stream_collides_with_another "$(channelmod --get-id $CHANNEL_NAME)" "$START_TIME" "$EDIT_END_TIME_MYSQL" $STREAM_ID;
                 then
                     echo "ERROR: The requested channel is already occupied during the requested timespan. Can't schedule a stream."
                     exit 1
                 fi
 
-                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET end_time = STR_TO_DATE('$EDIT_END_TIME','%d.%m.%Y %H:%i') WHERE id = $STREAM_ID"
+                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET end_time = STR_TO_DATE('$EDIT_END_TIME_MYSQL','%Y-%m-%d %H:%i') WHERE id = $STREAM_ID"
                 echo "Updated to the database"
             ;;
         esac
@@ -638,8 +685,8 @@ USER OPERATIONS:
     - Channel ID (from channelmod --list --ids)
     - Game ID (from gamemod --list --ids)
     - Twitch title
-    - Start time (format: DD.MM.YYYY HH:MM)
-    - End time (format: DD.MM.YYYY HH:MM)
+    - Start time (format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM)
+    - End time (format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM)
 
     Usage: $(basename "$0") --add
 
@@ -733,7 +780,7 @@ EXAMPLES:
 NOTES:
   - Always schedule streams in advance for automatic container management
   - Stream collisions are NOT automatically checked - verify manually with --upcoming
-  - Time format must be DD.MM.YYYY HH:MM (e.g., 15.03.2026 19:30)
+  - Time format: DD.MM.YYYY HH:MM (EU, e.g., 15.03.2026 19:30) or MM/DD/YYYY HH:MM (US, e.g., 03/15/2026 19:30)
   - Containers start 30 minutes before and stop 30 minutes after scheduled times
 "
     exit 0
