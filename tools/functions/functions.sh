@@ -41,6 +41,59 @@ require_operation() {
     fi
 }
 
+# Datetime conversion functions
+# Convert datetime from EU/US formats to MySQL format
+# Accepts: DD.MM.YYYY HH:MM (EU) or MM/DD/YYYY HH:MM (US)
+# Returns: YYYY-MM-DD HH:MM (MySQL format) or empty string on error
+convert_to_mysql_datetime() {
+    local input="$1"
+    local result=""
+
+    # Try European format (DD.MM.YYYY HH:MM) - macOS
+    result=$(date -j -f "%d.%m.%Y %H:%M" "$input" "+%Y-%m-%d %H:%M" 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        echo "$result"
+        return 0
+    fi
+
+    # Try European format - Linux
+    result=$(date -d "$input" "+%Y-%m-%d %H:%M" 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        echo "$result"
+        return 0
+    fi
+
+    # Try US format (MM/DD/YYYY HH:MM) - macOS
+    result=$(date -j -f "%m/%d/%Y %H:%M" "$input" "+%Y-%m-%d %H:%M" 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        echo "$result"
+        return 0
+    fi
+
+    # Try US format - Linux (with proper parsing)
+    if [[ "$input" =~ ^([0-9]{2})/([0-9]{2})/([0-9]{4})\ ([0-9]{2}:[0-9]{2})$ ]]; then
+        # Convert MM/DD/YYYY HH:MM to YYYY-MM-DD HH:MM for Linux date command
+        local us_format="${BASH_REMATCH[3]}-${BASH_REMATCH[1]}-${BASH_REMATCH[2]} ${BASH_REMATCH[4]}"
+        result=$(date -d "$us_format" "+%Y-%m-%d %H:%M" 2>/dev/null)
+        if [ $? -eq 0 ]; then
+            echo "$result"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+# Validate datetime format (accepts both EU and US formats)
+validate_datetime() {
+    local input="$1"
+    if convert_to_mysql_datetime "$input" >/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 db_get_caster_discord_id() {
     CASTER=$1
 

@@ -4,59 +4,6 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
-# Helper functions for datetime conversion and validation
-# Validate and convert datetime to MySQL format
-# Accepts: DD.MM.YYYY HH:MM (EU) or MM/DD/YYYY HH:MM (US)
-# Returns: YYYY-MM-DD HH:MM (MySQL format) or empty string on error
-convert_to_mysql_datetime() {
-    local input="$1"
-    local result=""
-
-    # Try European format (DD.MM.YYYY HH:MM) - macOS
-    result=$(date -j -f "%d.%m.%Y %H:%M" "$input" "+%Y-%m-%d %H:%M" 2>/dev/null)
-    if [ $? -eq 0 ]; then
-        echo "$result"
-        return 0
-    fi
-
-    # Try European format - Linux
-    result=$(date -d "$input" "+%Y-%m-%d %H:%M" 2>/dev/null)
-    if [ $? -eq 0 ]; then
-        echo "$result"
-        return 0
-    fi
-
-    # Try US format (MM/DD/YYYY HH:MM) - macOS
-    result=$(date -j -f "%m/%d/%Y %H:%M" "$input" "+%Y-%m-%d %H:%M" 2>/dev/null)
-    if [ $? -eq 0 ]; then
-        echo "$result"
-        return 0
-    fi
-
-    # Try US format - Linux (with proper parsing)
-    if [[ "$input" =~ ^([0-9]{2})/([0-9]{2})/([0-9]{4})\ ([0-9]{2}:[0-9]{2})$ ]]; then
-        # Convert MM/DD/YYYY HH:MM to YYYY-MM-DD HH:MM for Linux date command
-        local us_format="${BASH_REMATCH[3]}-${BASH_REMATCH[1]}-${BASH_REMATCH[2]} ${BASH_REMATCH[4]}"
-        result=$(date -d "$us_format" "+%Y-%m-%d %H:%M" 2>/dev/null)
-        if [ $? -eq 0 ]; then
-            echo "$result"
-            return 0
-        fi
-    fi
-
-    return 1
-}
-
-# Validate datetime format (accepts both EU and US formats)
-validate_datetime() {
-    local input="$1"
-    if convert_to_mysql_datetime "$input" >/dev/null; then
-        return 0
-    else
-        return 1
-    fi
-}
-
 OPERATION=$1
 # Accept both EU (DD.MM.YYYY HH:MM) and US (MM/DD/YYYY HH:MM) formats
 REGEXP_EU='^([0-2][0-9]|3[0-1])\.(0[1-9]|1[0-2])\.[0-9]{4}\s([01]?[0-9]|2[0-3]):[0-5][0-9]$'
