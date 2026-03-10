@@ -15,7 +15,7 @@ CONTAINER_ID=$(docker ps -aqf "name=mysql")
 case $OPERATION in
     "--add")
         read -r -p "What's the technical name of the game? (eg. pubg, csgo)" NAME
-        read -r -p "What's the display name of the game? (eg. Playerunknow's Battlegrounds)" DISPLAYNAME
+        read -r -p "What's the display name of the game? (eg. PUBG: Battlegrounds)" DISPLAYNAME
         read -r -p "What's the abbreviation of the game? (eg. PUBG, CS:GO)" ABBR
         read -r -p "What's the delay of streams for the game in seconds?" DELAY
 
