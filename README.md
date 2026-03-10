@@ -78,6 +78,7 @@ Port mapping: **48001-48010** for regular streams, **48101-48110** for proxy-onl
 
 - [Home](../../wiki/Home) - Overview and getting started
 - [Installation](../../wiki/Installation) - Step-by-step setup guide
+- [Ansible Deployment](../../wiki/Ansible-Deployment) - Automated deployment
 - [Architecture](../../wiki/Architecture) - How the system works
 - [Configuration](../../wiki/Configuration) - Games, channels, tokens, ads
 - [Management Tools](../../wiki/Management-Tools) - Command reference

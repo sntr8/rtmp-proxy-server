@@ -472,7 +472,7 @@ Location: `/opt/haproxy/haproxy.cfg` (on host, mounted into container)
 ### Manual Editing
 
 ```bash
-sudo nano /opt/haproxy/haproxy.cfg
+sudo vi /opt/haproxy/haproxy.cfg
 ```
 
 **Important:** Don't edit between `# ::<CasterName>::start` and `# ::<CasterName>::end` markers - these are managed automatically.

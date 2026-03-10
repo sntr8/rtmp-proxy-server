@@ -1,96 +1,148 @@
 ---
 # provision/tasks
 
-- name: Add a Kanaliiga user
+- name: Add system admin user (optional)
   user:
-    name: "{{ kanaliiga_user }}"
+    name: "{{ system_user }}"
     shell: /bin/bash
     groups: sudo
-  register: add_kanaliiga_user
+  register: add_system_user
+  when: system_user is defined
 
-- name: Generate password for the Kanaliiga user
+- name: Generate password for system user
   set_fact:
-    kanaliiga_pwd: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
-  when: add_kanaliiga_user.changed
+    system_pwd: "{{ lookup('password', '/dev/null length=64 chars=ascii_letters,digits,punctuation') }}"
+  when: add_system_user.changed
 
-- name: Change password for the Kanaliiga user
+- name: Set password for system user
   user:
-    name: "{{ kanaliiga_user }}"
-    password: "{{ kanaliiga_pwd | password_hash('sha512') }}"
-  when: add_kanaliiga_user.changed
+    name: "{{ system_user }}"
+    password: "{{ system_pwd | password_hash('sha512') }}"
+  when: add_system_user.changed
 
-- name: Write the password of the user to the home directory
+- name: Write password to user home directory
   copy:
-    content: "{{ kanaliiga_pwd }}"
-    dest: /home/{{ kanaliiga_user }}/.pwd.txt
-  when: add_kanaliiga_user.changed
+    content: "{{ system_pwd }}"
+    dest: /home/{{ system_user }}/.pwd.txt
+    mode: '0600'
+    owner: "{{ system_user }}"
+  when: add_system_user.changed
 
-- name: Check the default editor
+- name: Check default editor
   stat:
     path: /etc/alternatives/editor
   register: editor
 
-- name: Install packages
+- name: Install required packages
   apt:
     name:
     - git
     - vim
-    - librtmp-dev
     - curl
     - jq
-    state: latest
+    - ca-certificates
+    - gnupg
+    state: present
+    update_cache: yes
 
-- name: Set vim as the default editor
+- name: Set vim as default editor
   shell: "/usr/sbin/update-alternatives --set editor /usr/bin/vim.tiny || /usr/bin/update-alternatives --set editor /usr/bin/vim.tiny"
-  when: editor.stat.lnk_source != '/usr/bin/vim.tiny'
+  when: editor.stat.lnk_source is defined and editor.stat.lnk_source != '/usr/bin/vim.tiny'
 
 - import_tasks: upgrade.yml
   tags: upgrade
 
-- name: Create directories
+- name: Create required directories
   file:
     path: /opt/{{ item }}
     state: directory
+    mode: '0755'
   with_items:
     - mysql/data
     - haproxy
-    - tools
     - letsencrypt
+    - rtmp/workdir
 
-- name: Add /opt/tools to secure_path
+- name: Clone RTMP Proxy Server repository
+  git:
+    repo: "{{ git_repo | default('https://github.com/sntr8/rtmp-proxy-server.git') }}"
+    dest: /opt/rtmp-proxy-server
+    version: "{{ git_branch | default('main') }}"
+    force: yes
+  register: git_clone
+
+- name: Set executable permissions on tools
+  file:
+    path: /opt/rtmp-proxy-server/tools
+    mode: '0755'
+    recurse: yes
+
+- name: Add tools directory to secure_path
   lineinfile:
     path: /etc/sudoers
     regexp: '^Defaults[\t\s]+secure_path'
-    line: Defaults        secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/tools"
+    line: Defaults        secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/rtmp-proxy-server/tools"
+    validate: '/usr/sbin/visudo -cf %s'
 
-- name: Copy tools to server
-  copy:
-    src: ../tools/
-    dest: /opt/tools/
-    mode: 700
-
-- name: Add cron_worker.sh to cron
-  cron:
-    name: "cron_worker"
-    minute: "*"
-    job: "/opt/tools/cron_worker.sh >> /var/log/cron_worker.log"
-    user: root
-
-- name: Add logrotate to cron_worker.sh
-  copy:
-    src: cron_worker.logrotate
-    dest: /etc/logrotate.d/
-
-- name: Set enviroment variables
+- name: Set environment variables
   lineinfile:
-    path: /etc/profile
-    regexp: '^{{ item.key }}='
-    line: "{{ item.key }}={{ item.value }}"
+    path: /etc/profile.d/stream.sh
+    regexp: '^export {{ item.key }}='
+    line: "export {{ item.key }}={{ item.value }}"
+    create: yes
+    mode: '0644'
   with_dict: "{{ env_vars }}"
+
+- name: Set registry configuration
+  lineinfile:
+    path: /etc/profile.d/stream.sh
+    regexp: '^export {{ item.key }}='
+    line: "export {{ item.key }}={{ item.value }}"
+    create: yes
+    mode: '0644'
+  with_dict: "{{ registry_config }}"
+  when: item.value != ''
 
 - name: Set image versions
   lineinfile:
-    path: /etc/profile
-    regexp: '^{{ item.key }}='
-    line: "{{ item.key }}={{ item.value }}"
+    path: /etc/profile.d/stream.sh
+    regexp: '^export {{ item.key }}='
+    line: "export {{ item.key }}={{ item.value }}"
+    create: yes
+    mode: '0644'
   with_dict: "{{ image_versions }}"
+
+- name: Source stream.sh in all bash shells
+  lineinfile:
+    path: /etc/bash.bashrc
+    line: "# Source RTMP Proxy environment variables"
+    insertafter: EOF
+    create: yes
+    mode: '0644'
+
+- name: Source stream.sh in bash.bashrc
+  lineinfile:
+    path: /etc/bash.bashrc
+    line: "[ -f /etc/profile.d/stream.sh ] && . /etc/profile.d/stream.sh"
+    insertafter: "# Source RTMP Proxy environment variables"
+    create: yes
+    mode: '0644'
+
+- name: Preserve environment variables in sudo
+  lineinfile:
+    path: /etc/sudoers
+    line: 'Defaults env_keep += "FQDN MYSQL_* TWITCH_* HAPROXY_VERSION MYSQL_VERSION NGINX_HTTP_VERSION NGINX_RTMP_VERSION PHP_FPM_VERSION DOCKER_USERNAME REGISTRY_URL DISCORD_*"'
+    validate: '/usr/sbin/visudo -cf %s'
+
+- name: Add cron_worker.sh to cron
+  cron:
+    name: "RTMP Proxy cron worker"
+    minute: "*/5"
+    job: "source /etc/profile.d/stream.sh && /opt/rtmp-proxy-server/tools/cron_worker.sh >> /var/log/cron_worker.log 2>&1"
+    user: root
+
+- name: Add logrotate for cron_worker
+  copy:
+    src: cron_worker.logrotate
+    dest: /etc/logrotate.d/cron_worker
+    mode: '0644'

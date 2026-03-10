@@ -1,17 +1,36 @@
 ---
-#provision/defaults
+# provision/defaults
 
+# System user for administration (optional)
+system_user: admin
+
+# Environment variables for RTMP Proxy Server
 env_vars:
-  ADMIN_EMAIL: "santeri.lehtonen@kanaliiga.fi"
+  ADMIN_EMAIL: "{{ admin_email }}"
   FQDN: "{{ fqdn }}"
   MYSQL_USER: "{{ mysql_user }}"
   MYSQL_PASSWORD: "{{ mysql_password }}"
   MYSQL_ROOT_PASSWORD: "{{ mysql_root_password }}"
   MYSQL_DATABASE: "{{ mysql_database }}"
-  PATH: "$PATH:/opt/tools"
-  GIT_USER: "{{ git_user }}"
-  GIT_TOKEN: "{{ git_token }}"
-  IMAGE_VERSION: "{{ image_version }}"
-  DISCORD_WEBHOOK: "{{ discord_webhook }}"
-  DISCORD_SUPPORT_GROUP: "{{ discord_support_group }}"
-  CONFIG_BRANCH: "{{ config_branch }}"
+  PATH: "$PATH:/opt/rtmp-proxy-server/tools"
+  DISCORD_WEBHOOK: "{{ discord_webhook | default('') }}"
+  DISCORD_SUPPORT_GROUP: "{{ discord_support_group | default('') }}"
+  TWITCH_CLIENT_ID: "{{ twitch_client_id }}"
+  TWITCH_ACCESS_TOKEN: "{{ twitch_access_token }}"
+  TWITCH_REFRESH_TOKEN: "{{ twitch_refresh_token }}"
+
+# Docker registry configuration (choose one)
+# For Docker Hub: set docker_username
+# For custom registry: set registry_url
+# For local images: leave both empty
+registry_config:
+  DOCKER_USERNAME: "{{ docker_username | default('') }}"
+  REGISTRY_URL: "{{ registry_url | default('') }}"
+
+# Container versions
+image_versions:
+  HAPROXY_VERSION: "{{ haproxy_version | default('v1.6') }}"
+  MYSQL_VERSION: "{{ mysql_version | default('v1.6') }}"
+  NGINX_HTTP_VERSION: "{{ nginx_http_version | default('v1.6') }}"
+  NGINX_RTMP_VERSION: "{{ nginx_rtmp_version | default('v1.6') }}"
+  PHP_FPM_VERSION: "{{ php_fpm_version | default('v1.6') }}"

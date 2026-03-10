@@ -39,8 +39,12 @@ For experienced users who want the fast track:
 # Clone and configure
 git clone https://github.com/sntr8/rtmp-proxy-server.git
 cd rtmp-proxy-server
-sudo nano /etc/profile.d/stream.sh  # Set all environment variables
+sudo vi /etc/profile.d/stream.sh  # Set all environment variables
 source /etc/profile.d/stream.sh
+
+# Make environment available everywhere
+echo '[ -f /etc/profile.d/stream.sh ] && . /etc/profile.d/stream.sh' | sudo tee -a /etc/bash.bashrc
+echo 'Defaults env_keep += "FQDN MYSQL_* TWITCH_* HAPROXY_VERSION MYSQL_VERSION NGINX_HTTP_VERSION NGINX_RTMP_VERSION PHP_FPM_VERSION DOCKER_USERNAME REGISTRY_URL DISCORD_*"' | sudo EDITOR='tee -a' visudo
 
 # Build and deploy
 cd tools
@@ -109,9 +113,25 @@ Load the environment variables:
 source /etc/profile.d/stream.sh
 ```
 
-To make it permanent (loads on login):
+**Make environment available in all shells:**
+
 ```bash
-chmod +x /etc/profile.d/stream.sh
+# Source in all bash shells (not just login)
+echo '[ -f /etc/profile.d/stream.sh ] && . /etc/profile.d/stream.sh' >> /etc/bash.bashrc
+
+# Preserve environment with sudo
+echo 'Defaults env_keep += "FQDN MYSQL_* TWITCH_* HAPROXY_VERSION MYSQL_VERSION NGINX_HTTP_VERSION NGINX_RTMP_VERSION PHP_FPM_VERSION DOCKER_USERNAME REGISTRY_URL DISCORD_*"' | sudo EDITOR='tee -a' visudo
+```
+
+**Verify environment is loaded:**
+```bash
+# Test in new shell
+bash -c 'echo $FQDN'
+# Should output your domain name
+
+# Test with sudo
+sudo bash -c 'echo $MYSQL_ROOT_PASSWORD'
+# Should output your password
 ```
 
 ### Step 3: Build Docker Images
@@ -151,20 +171,40 @@ You should see: `casters`, `channels`, `games`, `streams`.
 
 ### Step 5: Add Twitch Channels
 
-Add each Twitch channel you want to stream to:
+Add each Twitch channel you want to stream to.
 
+**IMPORTANT:** Each Twitch channel requires **its own unique credentials** (access token, client ID, refresh token). You must obtain separate credentials from [twitchtokengenerator.com](https://twitchtokengenerator.com) for each channel.
+
+**First channel** (using environment variables):
 ```bash
 docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
   "INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, access_token_expires, port, url)
    VALUES (
      'yourchannel',                    # Twitch channel name (lowercase)
      'YourChannel',                    # Display name (matches Twitch exactly)
-     '$TWITCH_ACCESS_TOKEN',           # From twitchtokengenerator.com
-     '$TWITCH_CLIENT_ID',              # From twitchtokengenerator.com
-     '$TWITCH_REFRESH_TOKEN',          # From twitchtokengenerator.com
+     '$TWITCH_ACCESS_TOKEN',           # From environment variable
+     '$TWITCH_CLIENT_ID',              # From environment variable
+     '$TWITCH_REFRESH_TOKEN',          # From environment variable
      DATE_ADD(NOW(), INTERVAL 60 DAY), # Token expiry (60 days)
      48001,                            # Port for this channel (48001-48010)
      'https://twitch.tv/yourchannel'   # Channel URL
+   )"
+```
+
+**Additional channels** (must use channel-specific credentials):
+```bash
+# Get credentials for second channel from twitchtokengenerator.com
+docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
+  "INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, access_token_expires, port, url)
+   VALUES (
+     'secondchannel',                     # Different Twitch channel
+     'SecondChannel',
+     'second_channel_access_token_here',  # DIFFERENT credentials
+     'second_channel_client_id_here',     # DIFFERENT credentials
+     'second_channel_refresh_token_here', # DIFFERENT credentials
+     DATE_ADD(NOW(), INTERVAL 60 DAY),
+     48002,                               # Different port
+     'https://twitch.tv/secondchannel'
    )"
 ```
 

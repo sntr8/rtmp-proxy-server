@@ -1,0 +1,56 @@
+# Ansible Inventory for RTMP Proxy Server
+# Copy this to 'inventory' and customize for your environment
+
+[stream]
+stream.example.com ansible_user=root
+
+[stream:vars]
+# Domain configuration
+fqdn=stream.example.com
+admin_email=admin@example.com
+
+# MySQL configuration
+mysql_user=stream_user
+mysql_password=secure_password_here
+mysql_root_password=secure_root_password_here
+mysql_database=stream
+
+# Twitch API credentials (from twitchtokengenerator.com)
+twitch_client_id=your_client_id
+twitch_access_token=your_access_token
+twitch_refresh_token=your_refresh_token
+
+# Discord webhooks (optional)
+discord_webhook=https://discord.com/api/webhooks/...
+discord_support_group=<@&role_id>
+
+# Docker registry configuration (choose one approach)
+# Option 1: Docker Hub
+#docker_username=your_dockerhub_username
+#docker_password=your_dockerhub_token
+
+# Option 2: Custom registry (e.g., GitLab, private registry)
+#registry_url=registry.gitlab.com/youruser/yourproject
+#registry_username=your_username
+#registry_password=your_token
+
+# Option 3: Local images only (no registry)
+# Leave both docker_username and registry_url undefined
+
+# Container versions
+haproxy_version=v1.6
+mysql_version=v1.6
+nginx_http_version=v1.6
+nginx_rtmp_version=v1.6
+php_fpm_version=v1.6
+
+# Git repository (default: github.com/sntr8/rtmp-proxy-server)
+#git_repo=https://github.com/sntr8/rtmp-proxy-server.git
+#git_branch=main
+
+# System user (optional - creates admin user with sudo)
+#system_user=admin
+
+# Docker versions (usually leave as defaults)
+#docker_version=5:29.3.0-1~debian.12~bookworm
+#containerdio_version=2.2.1-1

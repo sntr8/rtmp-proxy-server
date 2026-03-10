@@ -1,17 +1,23 @@
 ---
 # docker/tasks
+
 - name: Check installed docker version
   shell:
-    cmd: dpkg -l docker-ce |grep docker-ce |awk '{print $3}'
+    cmd: dpkg -l docker-ce 2>/dev/null | grep docker-ce | awk '{print $3}'
   register: installed_docker_version
+  failed_when: false
+  changed_when: false
 
 - name: Check installed containerd.io version
   shell:
-    cmd: dpkg -l containerd.io |grep containerd.io |awk '{print $3}'
+    cmd: dpkg -l containerd.io 2>/dev/null | grep containerd.io | awk '{print $3}'
   register: installed_containerdio_version
+  failed_when: false
+  changed_when: false
 
-- block:
-    - name: Unhold Docker
+- name: Install Docker if not present or version mismatch
+  block:
+    - name: Unhold Docker packages
       dpkg_selections:
         name: "{{ item }}"
         selection: install
@@ -19,6 +25,7 @@
         - docker-ce
         - docker-ce-cli
         - containerd.io
+      failed_when: false
 
     - name: Install Docker prerequisites
       apt:
@@ -26,20 +33,28 @@
         - apt-transport-https
         - ca-certificates
         - curl
-        - gnupg-agent
+        - gnupg
         - software-properties-common
         - python3-docker
-        state: latest
-
-    - name: Add Docker GPG key
-      apt_key:
-        url: https://download.docker.com/linux/debian/gpg
-        id: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
         state: present
+        update_cache: yes
 
-    - name: Add Docker stable repository
+    - name: Create keyring directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Add Docker GPG key (modern method)
+      shell: |
+        curl -fsSL https://download.docker.com/linux/{{ ansible_distribution|lower }}/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        chmod a+r /etc/apt/keyrings/docker.gpg
+      args:
+        creates: /etc/apt/keyrings/docker.gpg
+
+    - name: Add Docker repository
       apt_repository:
-        repo: "deb [arch=amd64] https://download.docker.com/linux/{{ ansible_distribution|lower }} {{ ansible_distribution_release }} stable"
+        repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/{{ ansible_distribution|lower }} {{ ansible_distribution_release }} stable"
         state: present
         update_cache: yes
 
@@ -51,7 +66,7 @@
         - containerd.io={{ containerdio_version }}
         state: present
 
-    - name: Hold Docker to prevent upgrading
+    - name: Hold Docker to prevent automatic upgrades
       dpkg_selections:
         name: "{{ item }}"
         selection: hold
@@ -59,11 +74,30 @@
         - docker-ce
         - docker-ce-cli
         - containerd.io
+
+    - name: Ensure Docker service is running
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
   when:
     - docker_version != installed_docker_version.stdout or containerdio_version != installed_containerdio_version.stdout
 
-- name: Log into GitLab registry
+- name: Log into Docker Hub
   community.docker.docker_login:
-    registry_url: registry.gitlab.com/kanaliiga/stream-rtmp
-    username: "{{ git_user }}"
-    password: "{{ git_token }}"
+    username: "{{ docker_username }}"
+    password: "{{ docker_password }}"
+  when:
+    - docker_username is defined
+    - docker_password is defined
+
+- name: Log into custom Docker registry
+  community.docker.docker_login:
+    registry_url: "{{ registry_url }}"
+    username: "{{ registry_username }}"
+    password: "{{ registry_password }}"
+  when:
+    - registry_url is defined
+    - registry_username is defined
+    - registry_password is defined

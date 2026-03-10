@@ -249,7 +249,7 @@ docker exec -i mysql mysql -uroot -p$MYSQL_ROOT_PASSWORD $MYSQL_DATABASE < upgra
 
 4. **Update version environment variables:**
 ```bash
-sudo nano /etc/profile.d/stream.sh
+sudo vi /etc/profile.d/stream.sh
 # Update version numbers
 source /etc/profile.d/stream.sh
 ```

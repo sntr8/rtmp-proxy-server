@@ -1,5 +1,18 @@
 ---
 # docker/defaults
 
-docker_version: 5:28.1.1-1~debian.11~bullseye
-containerdio_version: 1.7.27-1
+# Docker versions - update these as needed
+# Check available versions: apt-cache madison docker-ce
+# Latest as of 2026-03: Docker CE 29.3.0, containerd.io 2.2.1
+docker_version: "5:29.3.0-1~{{ ansible_distribution|lower }}.{{ ansible_distribution_major_version }}~{{ ansible_distribution_release }}"
+containerdio_version: "2.2.1-1"
+
+# Docker registry authentication (optional)
+# For Docker Hub:
+# docker_username: "your_username"
+# docker_password: "your_password_or_token"
+
+# For custom registry (e.g., GitLab, private registry):
+# registry_url: "registry.gitlab.com"
+# registry_username: "your_username"
+# registry_password: "your_token"

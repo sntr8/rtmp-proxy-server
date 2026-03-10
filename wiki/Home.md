@@ -16,6 +16,7 @@ A Docker-based streaming proxy that sits between streamers and Twitch, providing
 
 ### Getting Started
 - **[Installation](Installation)** - Complete setup guide from scratch
+- **[Ansible Deployment](Ansible-Deployment)** - Automated deployment with Ansible
 - **[Quick Start](Installation#quick-start)** - Fast track for experienced users
 
 ### Understanding the System
