@@ -142,9 +142,9 @@ OPERATIONS:
 
     Parameters:
       - caster:  Caster nickname (e.g., JohnDoe)
-      - channel: Channel name (e.g., kanaliigatv, only1-proxy)
+      - channel: Channel name (e.g., mainchannel, only1-proxy)
 
-    Usage: $(basename "$0") --add JohnDoe kanaliigatv
+    Usage: $(basename "$0") --add JohnDoe mainchannel
     Usage: $(basename "$0") --add JohnDoe only1-proxy
 
   --remove <caster>
@@ -165,7 +165,7 @@ CONFIGURATION DETAILS:
 
   Generated Config Example:
     # ::JohnDoe::start
-    frontend rtmp-kanaliigatv
+    frontend rtmp-mainchannel
         bind *:48001
         mode tcp
         default_backend JohnDoe
@@ -183,7 +183,7 @@ CONFIGURATION DETAILS:
 EXAMPLES:
 
   # Add routing for regular stream container
-  haproxy_configmod --add JohnDoe kanaliigatv
+  haproxy_configmod --add JohnDoe mainchannel
 
   # Add routing for proxy container
   haproxy_configmod --add AliceSmith only1-proxy

@@ -5,9 +5,9 @@
     <?php
         $game = htmlspecialchars($_GET["game"]);
         if (empty($game)) {
-            echo "<title>Kanaliiga Common Ads</title>";
+            echo "<title>Stream Ads</title>";
         } else {
-            echo "<title>Kanaliiga ".strtoupper($game)." Ads</title>";
+            echo "<title>Stream ".strtoupper($game)." Ads</title>";
         }
     ?>
     <link rel="stylesheet" href="style.css">

@@ -213,7 +213,7 @@ OPERATIONS:
   --get-id <channel_name>
     Get the database ID for a specific channel.
 
-    Usage: $(basename "$0") --get-id kanaliigatv
+    Usage: $(basename "$0") --get-id yourchannel
 
     Returns: Channel ID number
 
@@ -221,35 +221,35 @@ OPERATIONS:
     Fetch a specific value from the database for a channel.
 
     Parameters:
-      - channel: Channel name (e.g., kanaliigatv)
+      - channel: Channel name (e.g., yourchannel)
       - key:     Database field name (currently only 'refresh_token' supported)
 
-    Usage: $(basename "$0") --get kanaliigatv refresh_token
+    Usage: $(basename "$0") --get yourchannel refresh_token
 
   --set <channel> <key> <value>
     Update a specific value in the database for a channel.
 
     Parameters:
-      - channel: Channel name (e.g., kanaliigatv)
+      - channel: Channel name (e.g., yourchannel)
       - key:     Field to update (access_token, client_id, or refresh_token)
       - value:   New value for the field
 
-    Usage: $(basename "$0") --set kanaliigatv access_token abc123xyz789
-    Usage: $(basename "$0") --set kanaliigatv client_id gp762nuuoqcoxypju8c569th9wz7q5
-    Usage: $(basename "$0") --set kanaliigatv refresh_token def456uvw012
+    Usage: $(basename "$0") --set yourchannel access_token abc123xyz789
+    Usage: $(basename "$0") --set yourchannel client_id gp762nuuoqcoxypju8c569th9wz7q5
+    Usage: $(basename "$0") --set yourchannel refresh_token def456uvw012
 
   --refresh-tokens <channel>
     Manually trigger Twitch token refresh using twitchtokengenerator.com API.
     Uses the channel's refresh_token to obtain a new access_token.
 
-    Usage: $(basename "$0") --refresh-tokens kanaliigatv
+    Usage: $(basename "$0") --refresh-tokens yourchannel
 
     Note: Tokens expire after 60 days. System attempts auto-refresh when needed.
 
   --test-tokens <channel>
     Validate that a channel's Twitch API tokens are currently valid.
 
-    Usage: $(basename "$0") --test-tokens kanaliigatv
+    Usage: $(basename "$0") --test-tokens yourchannel
 
     Returns: Exit 0 if valid, exit 1 if invalid
 
@@ -259,21 +259,21 @@ EXAMPLES:
   channelmod --list
 
   # Get channel ID for use in other commands
-  channelmod --get-id kanaliigatv
+  channelmod --get-id yourchannel
 
   # Check if tokens are valid
-  channelmod --test-tokens kanaliigatv
+  channelmod --test-tokens yourchannel
 
   # Manually refresh expired tokens
-  channelmod --refresh-tokens kanaliigatv
+  channelmod --refresh-tokens yourchannel
 
   # Update access token after manual fetch from twitchtokengenerator.com
-  channelmod --set kanaliigatv access_token new_token_here
-  channelmod --set kanaliigatv refresh_token new_refresh_token_here
-  channelmod --set kanaliigatv client_id new_client_id_here
+  channelmod --set yourchannel access_token new_token_here
+  channelmod --set yourchannel refresh_token new_refresh_token_here
+  channelmod --set yourchannel client_id new_client_id_here
 
   # Get current refresh token
-  channelmod --get kanaliigatv refresh_token
+  channelmod --get yourchannel refresh_token
 
 TWITCH API TOKENS:
   Channels need three tokens from twitchtokengenerator.com:
