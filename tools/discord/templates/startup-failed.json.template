@@ -9,5 +9,5 @@
         "description": "Stream container startup failed and further startup attempts has been suspended.\n$MESSAGE \nAfter the problem has been fixed, run \n`streammod --unskip <id>` to start the container again.",
         "color": "13369344"
     }],
-    "content":"<@&$SUPPORT_GROUP>"
+    "content":"$SUPPORT_GROUP"
 }

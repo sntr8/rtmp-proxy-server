@@ -9,5 +9,5 @@
         "description": "Refreshing Twitch OAuth tokens failed.",
         "color": "13369344"
     }],
-    "content":"<@&$SUPPORT_GROUP>"
+    "content":"$SUPPORT_GROUP"
 }

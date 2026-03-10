@@ -9,5 +9,5 @@
         "description": "Co-caster proxy container startup failed.\n$MESSAGE \nThe container needs to be started manually after the problem has been fixed.",
         "color": "13369344"
     }],
-    "content":"<@&$SUPPORT_GROUP>"
+    "content":"$SUPPORT_GROUP"
 }

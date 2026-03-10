@@ -431,7 +431,12 @@ Automated Discord messages for stream events.
 ```bash
 # Add to /etc/profile.d/stream.sh
 export DISCORD_WEBHOOK="https://discord.com/api/webhooks/123456789/abcdefg..."
-export DISCORD_SUPPORT_GROUP="<@&987654321>"  # Optional: role ID for mentions
+
+# Optional: Support group for error notifications (flexible formats accepted)
+export DISCORD_SUPPORT_GROUP="987654321"        # Just ID (defaults to role)
+export DISCORD_SUPPORT_GROUP="&987654321"       # Role with & prefix
+export DISCORD_SUPPORT_GROUP="@123456789"       # User with @ prefix
+export DISCORD_SUPPORT_GROUP="<@&987654321>"    # Full Discord syntax
 ```
 
 3. **Reload environment:**

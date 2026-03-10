@@ -9,6 +9,6 @@
         "description": "Twitch OAuth tokens are invalid",
         "color": "13369344"
     }],
-    "content":"<@&$SUPPORT_GROUP>"
+    "content":"$SUPPORT_GROUP"
 
 }

@@ -96,7 +96,10 @@ export TWITCH_REFRESH_TOKEN="your_twitch_refresh_token"
 
 # Discord Webhooks (optional, for notifications)
 export DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
-export DISCORD_SUPPORT_GROUP="discord_role_or_user_id"
+# Support group - accepts multiple formats:
+# Role: "987654321", "&987654321", or "<@&987654321>"
+# User: "@123456789" or "<@123456789>"
+export DISCORD_SUPPORT_GROUP="987654321"
 
 # Container Versions (check releases for latest)
 export HAPROXY_VERSION="v1.6"

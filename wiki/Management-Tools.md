@@ -646,7 +646,13 @@ Set environment variables:
 
 ```bash
 export DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
-export DISCORD_SUPPORT_GROUP="<@&123456789>"  # Role or user mention
+
+# DISCORD_SUPPORT_GROUP accepts flexible formats:
+export DISCORD_SUPPORT_GROUP="987654321"        # Just ID (defaults to role)
+export DISCORD_SUPPORT_GROUP="&987654321"       # Role with & prefix
+export DISCORD_SUPPORT_GROUP="@123456789"       # User with @ prefix
+export DISCORD_SUPPORT_GROUP="<@&987654321>"    # Full Discord role syntax
+export DISCORD_SUPPORT_GROUP="<@123456789>"     # Full Discord user syntax
 ```
 
 ### Automated Messages

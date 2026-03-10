@@ -5,12 +5,49 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+normalize_discord_mention() {
+    local input="$1"
+
+    # Empty input
+    if [ -z "$input" ]; then
+        echo ""
+        return
+    fi
+
+    # Already formatted (starts with <@ and ends with >)
+    if [[ "$input" =~ ^\<@.*\>$ ]]; then
+        echo "$input"
+        return
+    fi
+
+    # Starts with & = role mention
+    if [[ "$input" =~ ^\&[0-9]+$ ]]; then
+        echo "<@${input}>"  # <@&123...>
+        return
+    fi
+
+    # Starts with @ = user mention
+    if [[ "$input" =~ ^@[0-9]+$ ]]; then
+        echo "<${input}>"  # <@123...>
+        return
+    fi
+
+    # Just number = default to role mention
+    if [[ "$input" =~ ^[0-9]+$ ]]; then
+        echo "<@&$input>"
+        return
+    fi
+
+    # Unknown format - use as-is
+    echo "$input"
+}
+
 CASE=$1
 STREAM_ID=$2
 MESSAGE=$(echo "$3" |cut -c -500)
 WEBHOOK_URL=$DISCORD_WEBHOOK
 SESSION_ID=$(od -x /dev/urandom | head -1 | awk '{OFS="-"; print $2$3,$4,$5,$6,$7$8$9}')
-SUPPORT_GROUP=$DISCORD_SUPPORT_GROUP
+SUPPORT_GROUP=$(normalize_discord_mention "$DISCORD_SUPPORT_GROUP")
 
 if [ -z "$STREAM_ID" ];
 then
