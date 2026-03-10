@@ -106,6 +106,7 @@ export CONFIG_BRANCH="master"
 
 # Discord Webhooks (optional)
 export DISCORD_WEBHOOK="your_discord_webhook_url"
+export DISCORD_SUPPORT_GROUP="your_discord_tech_support_group_id"
 
 # Container Versions
 export HAPROXY_VERSION="v1.6"
@@ -417,9 +418,14 @@ Contributions welcome! Please:
 
 ## License
 
-[Your License Here]
+This project is licensed under the **PolyForm Noncommercial License 1.0.0**. 
+
+You are free to use, modify, and share this software for noncommercial purposes (such as personal projects, academic research, or hobbyist communities). You may **not** use this software for commercial purposes, including selling it, using it to run a paid service, or incorporating it into a commercial product.
+
+To view the full legal text of the license, see the [LICENSE](LICENSE) file or visit [https://polyformproject.org/licenses/noncommercial/1.0.0/](https://polyformproject.org/licenses/noncommercial/1.0.0/).
 
 ## Credits
 
 sntr8
+
 Originally developed for managing multiple game casters streaming to Twitch channels with competitive delay requirements for Kanaliiga.
