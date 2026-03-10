@@ -42,14 +42,11 @@ RUN apk add --update-cache \
     mkdir /var/lock/nginx && \
     rm -rf /tmp/build
 
-RUN mkdir -p /opt/rtmp/ && \
-    cd /opt/rtmp/ && \
-    git clone https://github.com/sntr8/rtmp_stream_delayer.git . && \
-    git checkout --detach ${RTMP_DELAYER_COMMIT} && \
-    rm delayer_settings.py nginx.conf && \
-    chmod +x rtmp_stream_delayer.py && \
-    mkdir -p /opt/rtmp/workdir && \
+RUN mkdir -p /opt/rtmp/workdir && \
     chmod 777 /opt/rtmp/workdir
+
+COPY rtmp_stream_delayer/stream_delayer.py /opt/rtmp/
+RUN chmod +x /opt/rtmp/stream_delayer.py
 
 FROM alpine:3.17 AS nginx-rtmp
 
