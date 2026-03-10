@@ -1,422 +1,414 @@
-# Kanaliiga RTMP Proxy
+# RTMP Proxy Server - Administration Guide
 
-Kanaliigan RTMP Proxy -palvelin toimii välityspalvelimena casterin ja Twitchin välissä. Palvelin antaa Kanaliigalle mahdollisuuden hallinnoida kanaville lähetettäviä lähetyksiä, lisätä viivettä striimeihin ja hallita mainosnäyttöjä. Castereiden ei tarvitse jakaa Twitch-lähetysavaimiaan, vaan jokainen saa henkilökohtaisen lähetysavaimen järjestelmään.
+This RTMP proxy server acts as a central gateway between streamers and Twitch. The server provides centralized stream management, configurable broadcast delays, and advertisement rotation. The proxy masks Twitch channel stream keys from streamers—each streamer receives a personal authentication key for accessing the system, while the actual Twitch credentials remain securely stored on the server.
 
-## Palvelin
+## Key Features
 
-Osoite: `stream.kanaliiga.fi`
-Tunnukset: Kysy tunnuksia Discordissa
+- **Centralized Authentication**: Manage streamer access without sharing Twitch credentials
+- **Configurable Delay**: Apply per-game stream delays (e.g., 8 minutes for competitive games)
+- **Scheduled Streams**: Automatic container startup/shutdown based on schedules
+- **Multi-Channel Support**: Route multiple streamers to different Twitch channels
+- **Discord Integration**: Automated notifications for stream events
+- **Advertisement Management**: Serve rotating ads via HTTP endpoint
 
-## Lähdekoodit
+# Service Architecture
 
-Palvelun lähdekoodit ovat tarjolla GitLab-projektissa:
+The service is built on Docker and consists of multiple containers.
 
-Osoite: https://gitlab.com/kanaliiga/stream-rtmp
+## Container Hierarchy
 
-# Palvelun rakenne
+The **base containers** essential for the service's operation are: **haproxy**, **mysql**, **php-fpm**, and **nginx-http**. All four of these containers must be running for the service to function correctly.
 
-Palvelu on rakennettu Dockerin päälle ja se koostuu useammasta kontista.
+**Stream containers** are created dynamically per caster as needed. For each caster, the following can be created:
+- **nginx-rtmp-\<caster\>**: A game stream container that sends the stream to Twitch with or without a delay.
+- **nginx-rtmp-proxy-\<caster\>**: A proxy container that does not send to Twitch, but only acts as an internal proxy server.
 
-## Konttihierarkia
-
-Palvelun toiminnan kannalta välttämättömät **peruskontit** ovat: **haproxy**, **mysql**, **php-fpm** ja **nginx-http**. Kaikkien näiden neljän kontin on oltava päällä, jotta palvelu toimii oikein.
-
-**Striimikontit** luodaan dynaamisesti per casteri tarpeen mukaan. Jokaiselle casterille voidaan luoda:
-- **nginx-rtmp-\<caster\>**: Pelistriimikontti, joka lähettää striimin Twitchiin viiveellä tai ilman.
-- **nginx-rtmp-proxy-\<caster\>**: Välityspalvelinkontti (proxy), joka ei lähetä Twitchiin, vaan toimii ainoastaan sisäisenä välityspalvelimena.
-
-Kontit ladataan GitLabin säilörekisteristä (container registry) käyttäen kontin versionumeroa ympäristömuuttujista. Versiot asetetaan Ansiblella tai käsin palvelimen ympäristömuuttujiksi.
+Containers are downloaded from GitLab's container registry using the container version number from environment variables. Versions are set with Ansible or manually as server environment variables.
 
 ### haproxy
 
-HAProxy toimii palvelun edustana ja DMZ:na. Ainoastaan HAProxy (sekä SSH-portti) on palvelimesta avoinna ulkomaailmaan. HAProxy ohjaa RTMP-liikenteen oikeille nginx-rtmp-konteille portin perusteella.
+HAProxy acts as the service frontend and DMZ. Only HAProxy (and the SSH port) is open from the server to the outside world. HAProxy routes RTMP traffic to the correct nginx-rtmp containers based on the port.
 
-Jokaiselle kanavalle on määritetty oma portti (48001-48010 pelistriimit, 48101-48110 proxy-striimit). HAProxyn konfiguraatio päivitetään dynaamisesti, kun kontteja käynnistetään tai sammutetaan `haproxy_configmod`-skriptillä.
+Each channel is assigned its own port (48001-48010 for game streams, 48101-48110 for proxy streams). HAProxy's configuration is updated dynamically when containers are started or stopped via the `haproxy_configmod` script.
 
-**HUOM:** HAProxy tukee pehmeitä uudelleenlatauksia (graceful reload, HUP-signaali), joka siirtää vanhat yhteydet uuteen prosessiin ennen vanhan sammuttamista. Konfiguraatiomuutokset eivät siis katkaise käynnissä olevia striimejä.
+**NOTE:** HAProxy supports graceful reloads (HUP signal), which moves old connections to a new process before shutting down the old one. Therefore, configuration changes do not disconnect running streams.
 
 ### mysql
 
-MySQL-kontti tarjoaa palvelun tietokannan. Tietokannassa on neljä päätaulua: **casters**, **channels**, **games** ja **streams**.
+The MySQL container provides the service's database. There are four main tables in the database: **casters**, **channels**, **games**, and **streams**.
 
 #### casters
 
-Taulussa ovat kaikki casterit, joilla on oikeus käyttää palvelua. Lisäksi taulussa on kaksi sisäistä teknistä käyttäjää:
-- **internal_technical_user**: Käytetään viiveen kanssa toimivien konttien sisäisessä kommunikaatiossa.
-- **vlc_viewer**: Käytetään, kun katsoja haluaa katsella striimiä VLC:llä ilman viivettä.
+This table contains all casters who have the right to use the service. Additionally, the table has two internal technical users:
+- **internal_technical_user**: Used for internal communication of containers operating with a delay.
+- **vlc_viewer**: Used when a viewer wants to watch the stream via VLC without delay.
 
-| Kenttä | Tyyppi | Kuvaus | Esimerkki |
+| Field | Type | Description | Example |
 |-|-|-|-|
-| id | bigint | Automaattisesti generoitu ID | 1 |
-| nick | varchar(255) | Casterin nimimerkki | JohnDoe |
-| stream_key | varchar(255) | Casterin henkilökohtainen lähetysavain. Generoidaan automaattisesti casteria luotaessa. | JohnDoe-abc123def456 |
-| discord_id | varchar(255) | Casterin Discord ID (pitkä numerosarja, ei nick#1234). Saadaan Discord-kehittäjätilassa käyttäjää oikeaklikkaamalla. | 123456789012345678 |
-| active | boolean | Onko casterilla oikeus lähettää. Asetetaan automaattisesti arvoon true kun kontti käynnistyy, false kun kontti sammutetaan. | true |
-| internal | boolean | Onko kyseessä sisäinen tekninen käyttäjä. | false |
-| date_added | datetime | Päivämäärä, jolloin käyttäjä lisättiin. | 2021-06-15 14:25:00 |
+| id | bigint | Automatically generated ID | 1 |
+| nick | varchar(255) | Caster's nickname | JohnDoe |
+| stream_key | varchar(255) | Caster's personal stream key. Automatically generated when creating a caster. | JohnDoe-02785da33388 |
+| discord_id | varchar(255) | Caster's Discord ID (long string of numbers, not nick#1234). Obtained by right-clicking the user in Discord Developer Mode. | 818954266525433916 |
+| active | boolean | Whether the caster has the right to broadcast. Automatically set to true when the container starts, false when the container is stopped. | true |
+| internal | boolean | Whether this is an internal technical user. | false |
+| date_added | datetime | Date when the user was added. | 2021-06-15 14:25:00 |
 
 #### channels
 
-Taulussa ovat kanavat, joille lähetyksiä voidaan ohjata. Kanavat jakaantuvat kahteen tyyppiin:
-- **Twitch-kanavat** (kanaliigatv, kanaliigatv2, kanaliigatv3, kanaliigabot): Oikeat Twitch-kanavat, joille voidaan lähettää.
-- **Proxy-kanavat** (kanaliigatv1-proxy, only1-proxy, jne.): Sisäiset välityskanavat, jotka eivät lähetä Twitchiin.
+This table contains the channels to which broadcasts can be routed. Channels are divided into two types:
+- **Twitch channels** (johndoe, etc.): Real Twitch channels that can be broadcasted to.
+- **Proxy channels** (johndoe-proxy, etc.): Internal proxy channels that do not broadcast to Twitch.
 
-| Kenttä | Tyyppi | Kuvaus | Esimerkki |
+| Field | Type | Description | Example |
 |-|-|-|-|
-| id | bigint | Automaattisesti generoitu ID | 1 |
-| name | varchar(255) | Kanavan tekninen nimi. Twitch-kanaville sama kuin kirjautumistunnus. | kanaliigatv |
-| display_name | varchar(255) | Kanavan näyttönimi | KanaliigaTV |
-| access_token | varchar(255) | Twitch Helix API:n pääsytunnus (vain Twitch-kanaville). | WOYkPWbdf1sMgdAUxhti7dhET6wWPS7 |
-| client_id | varchar(255) | Twitch API client ID (vain Twitch-kanaville). | gp762nuuoqcoxypju8c569th9wz7q5 |
-| refresh_token | varchar(255) | Tunnus, jolla access_token voidaan päivittää twitchtokengenerator.com API:lla. | lM6aMXactcfUxf0jXViNfzrHX6URxkbdbanBTLEqgIFuNDnHqPv |
-| access_token_expires | datetime | Milloin access_token vanhenee (max 60 pv). | 2021-06-15 14:25:00 |
-| port | int | Kanavan HAProxy-portti (48001-48010 striimit, 48101-48110 proxy). | 48001 |
-| url | varchar(255) | Kanavan Twitch-URL | https://www.twitch.tv/kanaliigatv |
+| id | bigint | Automatically generated ID | 1 |
+| name | varchar(255) | Technical name of the channel. For Twitch channels, the same as the login name. | johndoe |
+| display_name | varchar(255) | Display name of the channel | John Doe's Channel |
+| access_token | varchar(255) | Twitch Helix API access token (Twitch channels only). | WOYkPWbdf1sMgdAUxhti7dhET6wWPS7 |
+| client_id | varchar(255) | Twitch API client ID (Twitch channels only). | gp762nuuoqcoxypju8c569th9wz7q5 |
+| refresh_token | varchar(255) | Token used to refresh the access_token via twitchtokengenerator.com API. | lM6aMXactcfUxf0jXViNfzrHX6URxkbdbanBTLEqgIFuNDnHqPv |
+| access_token_expires | datetime | When the access_token expires (max 60 days). | 2021-06-15 14:25:00 |
+| port | int | Channel's HAProxy port (48001-48010 streams, 48101-48110 proxy). | 48001 |
+| url | varchar(255) | Channel's Twitch URL | https://www.twitch.tv/johndoe |
 
 #### games
 
-Taulussa on kaikki pelit, joita voidaan lähettää Twitchiin. Pelin `display_name` on täsmättävä täysin Twitchin Helix API:n kanssa, jotta pelin asettaminen onnistuu.
+This table contains all the games that can be broadcasted to Twitch. The game's `display_name` must perfectly match the Twitch Helix API in order to set the game successfully.
 
-| Kenttä | Tyyppi | Kuvaus | Esimerkki |
+| Field | Type | Description | Example |
 |-|-|-|-|
-| id | bigint | Automaattisesti generoitu ID | 1 |
-| name | varchar(255) | Pelin tekninen nimi (lyhyt, pienillä kirjaimilla). | pubg |
-| display_name | varchar(255) | Pelin virallinen nimi Twitchissä (täsmättävä tarkalleen). | PlayerUnknown's Battlegrounds |
-| abbreviation | varchar(255) | Pelin virallinen lyhenne | PUBG |
-| delay | int | Lähetysviive sekunteina (0 = ei viivettä). | 480 |
+| id | bigint | Automatically generated ID | 1 |
+| name | varchar(255) | Technical name of the game (short, lowercase). | pubg |
+| display_name | varchar(255) | Official name of the game on Twitch (must match exactly). | PlayerUnknown's Battlegrounds |
+| abbreviation | varchar(255) | Official abbreviation of the game | PUBG |
+| delay | int | Broadcast delay in seconds (0 = no delay). | 480 |
 
 #### streams
 
-Taulussa ovat ajastetut lähetykset. Jokainen lähetys tulee ajastaa etukäteen, jotta:
-- Kontit käynnistyvät ja sammuvat automaattisesti.
-- Casterit saavat Discord-ilmoitukset konttien käynnistymisistä.
-- Kanavien päällekkäisyydet voidaan tarkistaa.
+This table contains scheduled broadcasts. Every broadcast must be scheduled in advance so that:
+- Containers start and stop automatically.
+- Casters receive Discord notifications about container startups.
+- Channel overlaps can be checked.
 
-| Kenttä | Tyyppi | Kuvaus | Esimerkki |
+| Field | Type | Description | Example |
 |-|-|-|-|
-| id | bigint | Automaattisesti generoitu ID | 1 |
-| caster_id | bigint | Pääcasterin ID (viiteavain casters-tauluun). | 1 |
-| cocaster_id | varchar(255) | Toisen casterin ID (lisätty v1.6). | 2 |
-| channel_id | bigint | Kanavan ID (viiteavain channels-tauluun). | 1 |
-| game_id | bigint | Pelin ID (viiteavain games-tauluun). NULL proxy-lähetyksille. | 1 |
-| title | varchar(255) | Twitchiin asetettava striimin otsikko. | Kanaliiga PUBG \| Masters Day 8 \| Casters: JohnDoe & JaneDoe |
-| description | text | Lähetyksen kuvaus (ei tällä hetkellä käytössä). | |
-| live | boolean | Onko lähetys tällä hetkellä käynnissä. | true |
-| skip | boolean | Onko lähetys merkitty ohitettavaksi virheen vuoksi. | false |
-| start_time | datetime | Lähetyksen alkamisaika | 2021-06-15 14:25:00 |
-| end_time | datetime | Lähetyksen päättymisaika (pakko olla start_time:n jälkeen). | 2021-06-15 16:25:00 |
+| id | bigint | Automatically generated ID | 1 |
+| caster_id | bigint | Primary caster's ID (foreign key to casters table). | 1 |
+| cocaster_id | varchar(255) | Co-caster's ID (added in v1.6). | 2 |
+| channel_id | bigint | Channel's ID (foreign key to channels table). | 1 |
+| game_id | bigint | Game's ID (foreign key to games table). NULL for proxy streams. | 1 |
+| title | varchar(255) | The stream title to be set on Twitch. | JohnDoe Plays Games  |
+| description | text | Broadcast description (currently not in use). | |
+| live | boolean | Whether the broadcast is currently live. | true |
+| skip | boolean | Whether the broadcast is marked to be skipped due to an error. | false |
+| start_time | datetime | Broadcast start time | 2021-06-15 14:25:00 |
+| end_time | datetime | Broadcast end time (must be after start_time). | 2021-06-15 16:25:00 |
 
 ### nginx-http
 
-nginx-http -kontti tarjoilee kahta eri kontekstia:
-1. **/ads/** - Julkinen, tarjoilee mainokset lähetysten käyttöön.
-2. **/rtmp/** - Sisäverkko, tarjoilee auth.php-autentikoinnin nginx-rtmp-konteille.
+The nginx-http container serves two different contexts:
+1. **/ads/** - Public, serves advertisements for use in broadcasts.
+2. **/rtmp/** - Internal network, serves auth.php authentication for nginx-rtmp containers.
 
-**Turvallisuus:** Pääsy /rtmp/-kontekstiin ulkoverkosta on estetty HAProxyn konfiguraatiossa.
+**Security:** Access to the /rtmp/ context from the external network is blocked in the HAProxy configuration.
 
-#### /ads/ - Mainoskonteksti
+#### /ads/ - Ad Context
 
-Mainossivu tarjoilee OBS-lähteeksi lisättävän mainoskierron.
+The ad page serves an ad rotation to be added as an OBS source.
 
-**Hakemistorakenne:**
+**Directory Structure:**
 ```
 nginx-http/html/ads/
 ├── img/
-│   ├── common/          # Yleiset mainokset (kaikissa striimeissä)
-│   ├── apex/            # Apex Legends -mainokset
-│   ├── csgo/            # CS:GO -mainokset
-│   ├── pubg/            # PUBG -mainokset
-│   └── rl/              # Rocket League -mainokset
-├── ads.php              # Pääsivu
-├── carousel.js          # Slick carousel -logiikka
+│   ├── common/          # Common ads (in all streams)
+│   ├── apex/            # Apex Legends ads
+│   ├── csgo/            # CS:GO ads
+│   ├── pubg/            # PUBG ads
+│   └── rl/              # Rocket League ads
+├── ads.php              # Main page
+├── carousel.js          # Vanilla JavaScript carousel
 └── style.css
 ```
 
-**Toiminta:**
-- Käyttää [Slick](https://kenwheeler.github.io/slick/)-kuvakarusselia.
-- Jokainen mainos näytetään 15 sekuntia.
-- URL: `/ads/pelinnimi.php` tai `/ads/ads.php?game=pelinnimi`
-- Ilman game-parametria näytetään vain common-mainokset.
-- Mainokset sekoitetaan satunnaisesti tasapuolisen mainosajan takaamiseksi.
+**Functionality:**
+- Uses a custom vanilla JavaScript carousel (no external dependencies).
+- Each ad is displayed for 15 seconds.
+- URL: `/ads/gamename.php` or `/ads/ads.php?game=gamename`
+- Without the game parameter, only common ads are shown.
+- Ads are shuffled randomly to ensure fair advertising time.
 
-**Mainoskuvien vaatimukset:**
-- Formaatti: `.png` tai `.jpg` (pienet kirjaimet!).
-- Sijainti: `img/common/` tai `img/pelinnimi/`
+**Ad Image Requirements:**
+- Format: `.png` or `.jpg` (lowercase letters!).
+- Location: `img/common/` or `img/gamename/`
 
-#### /rtmp/ - Autentikointikonteksti
+#### /rtmp/ - Authentication Context
 
-Sisäverkossa toimiva autentikointi nginx-rtmp-konteille. Tarjoilee `auth.php`-tiedoston.
+Internal network authentication for nginx-rtmp containers. Serves the `auth.php` file.
 
-**auth.php - RTMP-autentikointi:**
+**auth.php - RTMP Authentication:**
 
-Jokainen nginx-rtmp-kontille tuleva RTMP-yhteys autentikoidaan tämän kautta. Autentikoinnin vaatimukset:
-- Lähetyspolku täsmää aktiiviseen casteriin tietokannassa.
-- Lähetysavain täsmää casterin stream_key-kenttään.
-- Kutsu on tyyppiä: publish, play tai update.
-- Sisäiset käyttäjät (internal=true) eivät voi käyttää publish-kutsua.
+Every RTMP connection coming to the nginx-rtmp container is authenticated through this. Authentication requirements:
+- The broadcast path matches an active caster in the database.
+- The stream key matches the stream_key field of the caster.
+- The call is of type: publish, play, or update.
+- Internal users (internal=true) cannot use the publish call.
 
-**HTTP-vastauskoodit:**
+**HTTP Response Codes:**
 
-| Koodi | Merkitys |
+| Code | Meaning |
 |-|-|
-| 200 | Autentikointi onnistui |
-| 400 | RTMP-kutsu ei ole sallittu |
-| 401 | Lähetysavain on väärin |
-| 404 | Lähetyspolku on väärin |
-| 500 | Tietokantavirhe |
+| 200 | Authentication successful |
+| 400 | RTMP call not allowed |
+| 401 | Stream key is incorrect |
+| 404 | Broadcast path is incorrect |
+| 500 | Database error |
 
 ### php-fpm
 
-PHP-FPM -kontti suorittaa PHP-koodin nginx-http -kontin puolesta (ads.php ja auth.php).
+The PHP-FPM container executes PHP code on behalf of the nginx-http container (ads.php and auth.php).
 
-## Operointiskriptit
+## Operational Scripts
 
-Palvelua hallitaan Bash-skripteillä, jotka sijaitsevat `tools/`-hakemistossa:
+The service is managed with Bash scripts located in the `tools/` directory:
 
-| Skripti | Tarkoitus |
+| Script | Purpose |
 |-|-|
-| **containermod** | Konttien hallinta (käynnistys, sammutus, uudelleenkäynnistys) |
-| **streammod** | Striimien ajastus ja hallinta |
-| **castermod** | Casterien lisäys ja listaus |
-| **channelmod** | Kanavien hallinta |
-| **gamemod** | Pelien listaus |
-| **haproxy_configmod** | HAProxyn konfigurointi |
-| **discordmod** | Discord-ilmoitukset |
-| **cron_worker.sh** | Cron-työskripti striimien automaattiseen käynnistykseen/sammutukseen |
+| **containermod** | Container management (start, stop, restart) |
+| **streammod** | Stream scheduling and management |
+| **castermod** | Adding and listing casters |
+| **channelmod** | Channel management |
+| **gamemod** | Listing games |
+| **haproxy_configmod** | HAProxy configuration |
+| **discordmod** | Discord notifications |
+| **cron_worker.sh** | Cron worker script for automatic stream start/stop |
 
-### containermod - Konttien hallinta
+### containermod - Container Management
 
-Tärkein skripti konttien operointiin.
+The most important script for operating containers.
 
-**Kriittiset turvallisuusmekanismit:**
-- nginx-http ja php-fpm **eivät voi sammua**, jos mikään nginx-rtmp-kontti on käynnissä.
-- Tämä tarkistetaan `/var/lock/nginx-rtmp-*.lock` -tiedostoista.
-- nginx-rtmp-kontteja **ei voi käynnistää uudelleen** automaattisesti (käytä stop + start).
+**Critical Security Mechanisms:**
+- nginx-http and php-fpm **cannot be stopped** if any nginx-rtmp container is running.
+- This is checked from `/var/lock/nginx-rtmp-*.lock` files.
+- nginx-rtmp containers **cannot be restarted** automatically (use stop + start).
 
-**Yleisimmät komennot:**
+**Common Commands:**
 ```bash
-# Listaa kaikki kontit
+# List all containers
 containermod --list
 
-# Käynnistä kaikki peruskontit
+# Start all base containers
 containermod --start --all
 
-# Sammuta kaikki peruskontit (epäonnistuu, jos striimejä on käynnissä!)
+# Stop all base containers (fails if streams are running!)
 containermod --stop --all
 
-# Käynnistä kaikki peruskontit uudelleen (epäonnistuu, jos striimejä on käynnissä!)
+# Restart all base containers (fails if streams are running!)
 containermod --restart --all
 
-# Käynnistä yksittäinen peruskontti uudelleen
+# Restart a single base container
 containermod --restart --name haproxy
 
-# Käynnistä striimikontti
-containermod --start --name nginx-rtmp --caster JohnDoe --channel kanaliigatv --game pubg
+# Start a stream container
+containermod --start --name nginx-rtmp --caster JohnDoe --channel johndoe --game pubg
 
-# Käynnistä proxy-kontti
-containermod --start --name nginx-rtmp --caster JohnDoe --channel kanaliigatv1-proxy --proxy
+# Start a proxy container
+containermod --start --name nginx-rtmp --caster JohnDoe --channel johndoe-proxy --proxy
 
-# Sammuta striimikontti
+# Stop a stream container
 containermod --stop --name nginx-rtmp --caster JohnDoe
 
-# Sammuta proxy-kontti
+# Stop a proxy container
 containermod --stop --name nginx-rtmp --caster JohnDoe --proxy
 ```
 
-**HUOM:** Jos haluat käynnistää kaiken uudelleen, sinun on ensin sammutettava kaikki nginx-rtmp-kontit:
+**NOTE:** If you want to restart everything, you must first stop all nginx-rtmp containers:
 ```bash
-# Listaa ensin käynnissä olevat nginx-rtmp-kontit
+# First list running nginx-rtmp containers
 docker ps | grep nginx-rtmp
 
-# Sammuta jokainen erikseen
+# Stop each one individually
 containermod --stop --name nginx-rtmp --caster JohnDoe
-containermod --stop --name nginx-rtmp --caster JaneDoe --proxy
+containermod --stop --name nginx-rtmp --caster JohnDoe --proxy
 
-# Nyt voit käynnistää peruskontit uudelleen
+# Now you can restart the base containers
 containermod --restart --all
 ```
 
-### streammod - Striimien hallinta
+### streammod - Stream Management
 
-Striimien ajastus ja hallinta.
+Scheduling and managing streams.
 
-**Yleisimmät komennot:**
+**Common Commands:**
 ```bash
-# Lisää uusi striimi (interaktiivinen)
+# Add a new stream (interactive)
 streammod --add
 
-# Listaa tulevat striimit
+# List upcoming streams
 streammod --upcoming
 
-# Listaa käynnissä olevat striimit
+# List currently live streams
 streammod --live
 
-# Pidennä striimin päättymisaikaa
+# Extend a stream's end time
 streammod --extend <stream_id>
 
-# Poista striimi
+# Delete a stream
 streammod --delete <stream_id>
 ```
 
-**HUOM:** Striimit tulisi aina ajastaa etukäteen! Tämä varmistaa:
-- Automaattisen käynnistyksen/sammutuksen cron_workerillä.
-- Discord-ilmoitukset castereille.
-- Ei päällekkäisiä varauksia samalle kanavalle.
+**NOTE:** Streams should always be scheduled in advance! This ensures:
+- Automatic start/stop via cron_worker.
+- Discord notifications to casters.
+- No overlapping reservations on the same channel.
 
-### castermod - Casterien hallinta
+### castermod - Caster Management
 
-Casterien lisäys ja listaus.
+Adding and listing casters.
 
-**Komennot:**
+**Commands:**
 ```bash
-# Lisää uusi casteri (generoi automaattisen stream keyn)
+# Add a new caster (generates an automatic stream key)
 castermod --add <nick> <discord_id>
 
-# Lisää casteri tietyllä stream keylla
+# Add a caster with a specific stream key
 castermod --add <nick> <discord_id> --key <stream_key>
 
-# Listaa kaikki casterit
+# List all casters
 castermod --list
 
-# Listaa vain nickit
+# List only nicks
 castermod --list --nicks
 
-# Aktivoi casteri (asettaa active=true)
+# Activate caster (sets active=true)
 castermod --activate <nick>
 
-# Deaktivoi casteri (asettaa active=false)
+# Deactivate caster (sets active=false)
 castermod --disable <nick>
 ```
 
-**Discord ID:n hakeminen:**
-1. Discord > Settings > Advanced > Developer Mode (päälle)
-2. Oikeaklikkaa käyttäjää > Copy User ID
-3. ID on pitkä numerosarja, **ei** muotoa nick#1234.
+**Obtaining a Discord ID:**
+1. Discord > Settings > Advanced > Developer Mode (turn on)
+2. Right-click user > Copy User ID
+3. The ID is a long string of numbers, **not** in the format nick#1234.
 
-### haproxy_configmod - HAProxyn konfigurointi
+### haproxy_configmod - HAProxy Configuration
 
-HAProxyn konttireititysten hallinta. **Käytetään yleensä automaattisesti** `containermod`-skriptin toimesta.
+Managing HAProxy container routing. **Usually used automatically** by the `containermod` script.
 
 ```bash
-# Lisää reititys casterille
+# Add routing for a caster
 haproxy_configmod --add <caster> <channel>
 
-# Poista reititys
+# Remove routing
 haproxy_configmod --remove <caster>
 ```
 
-**HUOM:** Muutokset vaativat HAProxyn uudelleenlatauksen (reload), mutta pehmeä uudelleenlataus ei katkaise käynnissä olevia striimejä (HUP-signaali siirtää yhteydet uuteen prosessiin).
+**NOTE:** Changes require a HAProxy reload, but a graceful reload does not disconnect running streams (HUP signal moves connections to a new process).
 
 # Ansible
 
-Palvelimen konfigurointi tapahtuu Ansiblella. Ansible-konfiguraatiot määrittelevät:
-- Palvelimen ympäristömuuttujat (versiot, salasanat, API-avaimet).
-- Cron-työt striimien automaattiseen käynnistykseen.
-- Käyttöoikeudet ja turvallisuusasetukset.
+Server configuration is handled via Ansible. Ansible configurations define:
+- Server environment variables (versions, passwords, API keys).
+- Cron jobs for automatic stream startup.
+- Permissions and security settings.
 
-Ansible-konfiguraatiot sijaitsevat `ansible/`-hakemistossa.
+Ansible configurations are located in the `ansible/` directory.
 
 ---
 
-# Päivittäiset operaatiot
+# Daily Operations
 
-## Striimin ajastaminen
+## Scheduling a Stream
 
-**Striimit tulee AINA ajastaa etukäteen!** Tämä varmistaa automaattisen käynnistyksen/sammutuksen sekä Discord-ilmoitukset.
+**Streams must ALWAYS be scheduled in advance!** This ensures automatic start/stop and Discord notifications.
 
 ```bash
 streammod --add
 ```
 
-Komento kysyy interaktiivisesti:
-- **Casteri:** Pääcasterin nimimerkki (nick)
-- **Ko-casteri:** Toisen casterin nimimerkki (valinnainen, v1.6+)
-- **Kanava:** Twitch-kanava tai proxy-kanava
-- **Peli:** Pelin nimi (ei tarvita proxy-konteille)
-- **Otsikko:** Twitchiin asetettava striimin otsikko
-- **Alkamisaika:** Formaatti `DD.MM.YYYY HH:MM` (EU) tai `MM/DD/YYYY HH:MM` (US) - ei voi olla menneisyydessä
-- **Päättymisaika:** Formaatti `DD.MM.YYYY HH:MM` (EU) tai `MM/DD/YYYY HH:MM` (US) - pakko olla alkamisajan jälkeen
+The command prompts interactively for:
+- **Caster:** Primary caster's nickname (nick)
+- **Co-caster:** Second caster's nickname (optional, v1.6+)
+- **Channel:** Twitch channel or proxy channel
+- **Game:** Game name (not needed for proxy containers)
+- **Title:** Stream title to be set on Twitch
+- **Start Time:** Format `DD.MM.YYYY HH:MM` (EU) or `MM/DD/YYYY HH:MM` (US) - cannot be in the past
+- **End Time:** Format `DD.MM.YYYY HH:MM` (EU) or `MM/DD/YYYY HH:MM` (US) - must be after start time
 
-**HUOM:** Skripti ei automaattisesti tarkista päällekkäisiä varauksia! Tarkista käsin: `streammod --upcoming`
+**NOTE:** The script does not automatically check for overlapping reservations! Check manually: `streammod --upcoming`
 
-## Striimien hallinta
+## Stream Management
 
 ```bash
-# Listaa tulevat striimit
+# List upcoming streams
 streammod --upcoming
 
-# Listaa käynnissä olevat striimit
+# List live streams
 streammod --live
 
-# Pidennä striimin päättymisaikaa
+# Extend a stream's end time
 streammod --extend <stream_id>
 
-# Poista tuleva striimi
+# Delete an upcoming stream
 streammod --delete <stream_id>
 ```
 
-## Casterin lisääminen
+## Adding a Caster
 
 ```bash
 castermod --add <nick> <discord_id>
 ```
 
-**Discord ID:n hakeminen:**
-1. Discord > Asetukset > Lisäasetukset > Kehittäjätila (päälle)
-2. Oikeaklikkaa käyttäjää > Kopioi käyttäjän ID
-3. ID on pitkä numerosarja (esim. `123456789012345678`), **EI** muotoa nick#1234.
+**Obtaining a Discord ID:**
+1. Discord > Settings > Advanced > Developer Mode (turn on)
+2. Right-click user > Copy User ID
+3. The ID is a long string of numbers (e.g., `818954266525433916`), **NOT** in the format nick#1234.
 
-## Hätäkäynnistys käsin
+## Manual Emergency Startup
 
-**VAROITUS:** Käsin käynnistettyjä kontteja ei oteta huomioon ajastuksissa! Kontit on myös sammutettava itse käsin tai palvelun automaattinen toiminta lakkaa. Käytä vain hätätilanteissa.
+**WARNING:** Manually started containers are not accounted for in schedules! Use only in emergencies.
 
 ```bash
-# Katso ensin tarvittavat arvot
+# First check the required values
 castermod --list --nicks
 channelmod --list
 gamemod --list
 
-# Käynnistä striimikontti
+# Start a stream container
 containermod --start --name nginx-rtmp --caster <CASTER> --channel <CHANNEL> --game <GAME>
 
-# Käynnistä proxy-kontti
+# Start a proxy container
 containermod --start --name nginx-rtmp --caster <CASTER> --channel <PROXY_CHANNEL> --proxy
-
-# Sammuta striimikontti
-containermod --stop --name nginx-rtmp --caster <CASTER> --channel <CHANNEL>
-
-# Sammuta proxy-kontti
-containermod --stop --name nginx-rtmp --caster <CASTER> --channel <PROXY_CHANNEL> --proxy
 ```
 
-## Mainosten päivittäminen
+## Updating Advertisements
 
-**VAROITUS:** nginx-http- ja php-fpm-kontit eivät voi sammua striimien aikana! Päivitä mainokset ennen striimejä.
+**WARNING:** nginx-http and php-fpm containers cannot be stopped during streams! Update ads before streams.
 
-### 1. Lisää mainoskuvat GitLabiin
+### 1. Add ad images to GitLab
 
 ```bash
 git clone [https://gitlab.com/kanaliiga/stream-rtmp.git](https://gitlab.com/kanaliiga/stream-rtmp.git)
 cd stream-rtmp
-git checkout -b ads/yrityksen-nimi
+git checkout -b ads/company-name
 
-# Kopioi .png- tai .jpg-kuvat oikeaan hakemistoon:
-# nginx-http/html/ads/img/common/ (yleiset mainokset)
-# nginx-http/html/ads/img/pubg/ (pelikohtaiset)
+# Copy .png or .jpg images to the correct directory:
+# nginx-http/html/ads/img/common/ (common ads)
+# nginx-http/html/ads/img/pubg/ (game-specific)
 # nginx-http/html/ads/img/csgo/
 # nginx-http/html/ads/img/rl/
 # nginx-http/html/ads/img/apex/
 
 git add nginx-http/html/ads/img/
-git commit -m "Add ads for YritysOy"
-git push -u origin ads/yrityksen-nimi
+git commit -m "Add ads for CompanyOy"
+git push -u origin ads/company-name
 ```
 
-### 2. Luo Merge Request GitLabissa
+### 2. Create a Merge Request in GitLab
 
-Pyydä koodikatselmointi (code review) ja odota hyväksyntää.
+Request a code review and wait for approval.
 
-### 3. Koosta Docker-imaget (master-haarassa)
+### 3. Build Docker Images (in master branch)
 
 ```bash
 git checkout master
@@ -424,106 +416,106 @@ git pull
 ./tools/build_all_images.sh $IMAGE_VERSION
 ```
 
-Koostaminen (build) kestää 5-10 minuuttia internet-yhteydestä riippuen.
+Building takes about 5-10 minutes depending on the internet connection.
 
-### 4. Päivitä kontit palvelimella
+### 4. Update containers on the server
 
-**Tarkista ENSIN, ettei striimejä ole käynnissä:**
+**FIRST, check that no streams are running:**
 
 ```bash
-# Tarkista käynnissä olevat nginx-rtmp-kontit
+# Check running nginx-rtmp containers
 containermod --list
 
-# Jos nginx-rtmp-kontteja näkyy, ÄLÄ jatka!
-# Odota, että striimit päättyvät tai sovi asiasta niiden castereiden kanssa.
+# If nginx-rtmp containers are visible, DO NOT proceed!
+# Wait for streams to end or coordinate with the casters.
 
-# Jos ei nginx-rtmp-kontteja ole käynnissä, voit päivittää:
+# If no nginx-rtmp containers are running, you can update:
 containermod --stop --name nginx-http
 containermod --stop --name php-fpm
 containermod --start --name php-fpm
 containermod --start --name nginx-http
 ```
 
-# Vianmääritys
+# Troubleshooting
 
 ## "Connection failed to server" (OBS)
 
-**Oire:** OBS ei saa yhteyttä RTMP-palvelimeen.
+**Symptom:** OBS cannot connect to the RTMP server.
 
-**Mahdolliset syyt:**
+**Possible Causes:**
 
-### 1. Tarkista OBS-asetukset
+### 1. Check OBS Settings
 
 ```
 Server: rtmp://stream.kanaliiga.fi/<caster>/
 Stream Key: <caster>-<stream_key>
 ```
 
-**Oikea portti:** OBS yhdistää HAProxyyn, joka ohjaa liikenteen oikealle portille. **ÄLÄ** laita porttia OBS:n Server-kenttään.
+**Correct port:** OBS connects to HAProxy, which routes traffic to the correct port. **DO NOT** put a port in the OBS Server field.
 
-### 2. Tarkista, että HAProxy on käynnissä
+### 2. Check that HAProxy is running
 
 ```bash
 containermod --list | grep haproxy
 ```
 
-Jos ei näy, käynnistä se:
+If it doesn't appear, start it:
 ```bash
 containermod --start --name haproxy
 ```
 
-### 3. Tarkista, että nginx-rtmp-kontti on käynnissä
+### 3. Check that the nginx-rtmp container is running
 
 ```bash
 containermod --list | grep nginx-rtmp-<caster>
 ```
 
-Jos ei näy, tarkista:
-- Onko striimi ajastettu? `streammod --live`
-- Käynnistä käsin, jos on tarpeellista (katso hätäkäynnistys).
+If it doesn't appear, check:
+- Is the stream scheduled? `streammod --live`
+- Start manually if necessary (see manual emergency startup).
 
-### 4. Tarkista, että casteri on aktiivinen
+### 4. Check that the caster is active
 
 ```bash
 docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
   "SELECT nick, active, stream_key FROM casters WHERE nick='<caster>'"
 ```
 
-Kentän `active` pitää olla `1`. Jos se on `0`:
+The `active` field should be `1`. If it is `0`:
 ```bash
 castermod --activate <caster>
 ```
 
-### 5. Testaa yhteys palvelimeen
+### 5. Test the connection to the server
 
 ```bash
-# Omalta koneelta
+# From your own computer
 telnet stream.kanaliiga.fi 1935
 
-# Pitäisi yhdistää. Jos ei yhdistä, kyseessä on verkko-ongelma tai HAProxy ei kuuntele.
+# Should connect. If not, it's a network issue or HAProxy isn't listening.
 ```
 
-## OBS lähettää, mutta ei lähetystä Twitchissä
+## OBS broadcasts, but stream is not on Twitch
 
-### 1. Tarkista, että nginx-rtmp-kontti on käynnissä
+### 1. Check that the nginx-rtmp container is running
 
 ```bash
 containermod --list
 ```
 
-Listauksessa pitäisi näkyä `nginx-rtmp-<caster>` tai `nginx-rtmp-proxy-<caster>`.
+The listing should show `nginx-rtmp-<caster>` or `nginx-rtmp-proxy-<caster>`.
 
-### 2. Tarkista HAProxy-konfiguraatio
+### 2. Check HAProxy configuration
 
 ```bash
 cat /opt/haproxy/haproxy.cfg
 ```
 
-Jokaiselle casterille pitäisi olla oma lohko:
+There should be a distinct block for each caster:
 
 ```
 # ::JohnDoe::start
-frontend rtmp-kanaliigatv
+frontend rtmp-johndoe
     bind *:48001
     mode tcp
     default_backend JohnDoe
@@ -533,97 +525,97 @@ backend JohnDoe
 # ::JohnDoe::end
 ```
 
-**Ongelmat:**
-- Useampi konfiguraatiomääritys samalle casterille.
-- Puutteelliset lohkot (vain `::start` tai vain `::end`).
-- Konfiguraatio on olemassa casterille, jolla ei ole konttia käynnissä.
+**Problems:**
+- Multiple configuration definitions for the same caster.
+- Incomplete blocks (only `::start` or only `::end`).
+- Configuration exists for a caster that doesn't have a running container.
 
-**Korjaus 1 - Editoi käsin (suositeltu):**
+**Fix 1 - Edit manually (recommended):**
 
 ```bash
-# Editoi konfiguraatiota käsin
+# Edit configuration manually
 nano /opt/haproxy/haproxy.cfg
 
-# Poista duplikaatit/virheelliset lohkot.
-# Varmista, että jokaisella käynnissä olevalla kontilla on oikea lohko.
+# Remove duplicates/incorrect blocks.
+# Ensure every running container has a correct block.
 
-# HAProxyn uudelleenlataus (pehmeä, ei katkaise striimejä)
+# HAProxy reload (graceful, doesn't cut streams)
 docker kill -s HUP haproxy
 ```
 
-**Korjaus 2 - Uudelleengeneroi konfiguraatio:**
+**Fix 2 - Regenerate configuration:**
 
 ```bash
-# HUOM: Tämä uudelleenkäynnistys sammuttaa HAProxyn hetkeksi, mikä voi aiheuttaa lyhyen katkoksen.
+# NOTE: This restart will briefly shut down HAProxy, which may cause a short interruption.
 containermod --restart --name haproxy
 
-# Lisää konfiguraatio jokaiselle käynnissä olevalle kontille.
+# Add configuration for each running container.
 haproxy_configmod --add <CASTER> <CHANNEL>
-# Esim:
-haproxy_configmod --add JohnDoe kanaliigatv
+# Example:
+haproxy_configmod --add JohnDoe johndoe
 ```
 
-### 3. Tarkista Twitch Stream Key
+### 3. Check Twitch Stream Key
 
-**Mitä tapahtuu:** Kontin käynnistyessä järjestelmä hakee Twitchin lähetysavaimen (stream key) Helix API:sta ja konfiguroi ffmpeg:n lähettämään siihen. Jos haku epäonnistuu, avain jää "Null"-tilaan eikä striimiä lähetetä Twitchiin.
+**What happens:** Upon container startup, the system retrieves the Twitch stream key from the Helix API and configures ffmpeg to push to it. If the retrieval fails, the key remains "Null" and the stream is not broadcast to Twitch.
 
-**Tarkista konfiguraatio:**
+**Check configuration:**
 
 ```bash
 docker exec nginx-rtmp-<CASTER> cat /etc/nginx/nginx.conf | grep exec_push
 ```
 
-**Pitäisi näyttää tältä:**
+**It should look like this:**
 ```
 exec_push ffmpeg ... rtmp://live.twitch.tv/app/live_XXXXXXXXXXX;
 ```
 
-(Järjestelmä käyttää Twitchin automaattista reititystä `live.twitch.tv`, joka ohjaa liikenteen lähimpään palvelimeen).
+(The system uses Twitch's automatic routing `live.twitch.tv`, which routes traffic to the nearest server).
 
-**Jos näkyy `Null` lähetysavaimen paikalla:**
+**If `Null` appears in place of the stream key:**
 
-Tämä tarkoittaa, että Twitch API -kutsu epäonnistui kontin käynnistyksessä. Syitä tähän voivat olla:
-- Twitch access token on vanhentunut (katso kohta 4).
-- Twitch API oli alhaalla.
-- Tietokannassa on väärä kanavan nimi (channel name).
+This means the Twitch API call failed during container startup. Reasons for this could be:
+- Twitch access token is expired (see point 4).
+- Twitch API was down.
+- There is an incorrect channel name in the database.
 
-**Korjaus:**
+**Fix:**
 
 ```bash
-# Sammuta ja käynnistä kontti uudelleen (järjestelmä hakee lähetysavaimen uudestaan)
+# Stop and restart the container (the system will fetch the stream key again)
 containermod --stop --name nginx-rtmp --caster <CASTER>
 containermod --start --name nginx-rtmp --caster <CASTER> --channel <CHANNEL> --game <GAME>
 
-# Tarkista Docker-lokit, jos ongelma jatkuu:
+# Check Docker logs if the problem persists:
 docker logs nginx-rtmp-<CASTER> | grep -i "stream.*key\|twitch\|api"
 ```
 
-### 4. Tarkista Twitch API -tokenit
+### 4. Check Twitch API Tokens
 
-Twitchin pääsytunnukset (access tokenit) vanhenevat 60 päivän välein. Järjestelmä yrittää automaattisesti päivittää (refresh) tokenit käyttäen `refresh_token`-avainta.
+Twitch access tokens expire every 60 days. The system automatically attempts to refresh the tokens using the `refresh_token` key.
 
-**Tarkista tokenien tila:**
+**Check token status:**
 
 ```bash
-# Katso milloin tokenit vanhenevat
+# See when tokens expire
 docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
   "SELECT name, access_token_expires FROM channels WHERE name NOT LIKE '%proxy%'"
 ```
 
-**Jos lähetysavaimen haku epäonnistuu:**
+**If stream key retrieval fails:**
 
-1. Järjestelmä yrittää automaattisesti päivittää tokenit.
-2. Jos päivitys epäonnistuu, castereille lähetetään Discord-ilmoitus.
-3. **Manuaalinen korjaus tarvitaan, jos:**
-   - `refresh_token` on vanhentunut tai virheellinen.
-   - Twitch API -tunnukset (credentials) ovat muuttuneet.
+1. The system attempts to automatically refresh the tokens.
+2. If the refresh fails, a Discord notification is sent to the casters.
+3. **Manual fix is needed if:**
+   - `refresh_token` is expired or invalid.
+   - Twitch API credentials have changed.
 
-**Hae uudet tokenit:**
+**Fetch new tokens:**
 
-1. Mene osoitteeseen: https://twitchtokengenerator.com
-2. Kirjaudu sisään kanavalle.
-3. Hae uudet avaimet: `access_token`, `refresh_token` ja `client_id`.
-4. Päivitä ne tietokantaan:
+1. Go to: https://twitchtokengenerator.com
+2. Log in to the channel.
+3. Get new keys: `access_token`, `refresh_token`, and `client_id`.
+4. Update them in the database:
 
 ```bash
 docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
@@ -632,185 +624,185 @@ docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
    refresh_token='NEW_REFRESH_TOKEN',
    client_id='NEW_CLIENT_ID',
    access_token_expires=DATE_ADD(NOW(), INTERVAL 60 DAY)
-   WHERE name='kanaliigatv'"
+   WHERE name='johndoe'"
 ```
 
-## SSL/TLS-yhteysvirhe (HTTPS)
+## SSL/TLS Connection Error (HTTPS)
 
-**Oire:** Selaimessa näkyy "Your connection is not private" tai "SSL_ERROR_EXPIRED_CERT", kun yritetään avata https://stream.kanaliiga.fi
+**Symptom:** Browser shows "Your connection is not private" or "SSL_ERROR_EXPIRED_CERT" when attempting to open https://stream.kanaliiga.fi
 
-**Syy:** Let's Encrypt -varmenteet vanhenevat 90 päivän välein. HAProxyn pitäisi uusia ne automaattisesti, mutta joskus uusinta epäonnistuu.
+**Cause:** Let's Encrypt certificates expire every 90 days. HAProxy should renew them automatically, but sometimes the renewal fails.
 
-### Tarkista varmenteen vanheneminen
+### Check certificate expiration
 
 ```bash
-# Tarkista nykyisen varmenteen voimassaolo
+# Check the validity of the current certificate
 openssl x509 -in /opt/letsencrypt/live/stream.kanaliiga.fi/cert.pem -noout -dates
 
-# Tai selaimesta: Klikkaa lukon ikonia > Certificate > Valid from/to
+# Or from browser: Click the lock icon > Certificate > Valid from/to
 ```
 
-### Korjaa vanhentuneet varmenteet
+### Fix expired certificates
 
 ```bash
-# Poista vanhat varmenteet
+# Remove old certificates
 rm -rf /opt/letsencrypt/*
 
-# Käynnistä HAProxy uudelleen - se hakee automaattisesti uuden Let's Encrypt -varmenteen
+# Restart HAProxy - it will automatically fetch a new Let's Encrypt certificate
 containermod --restart --name haproxy
 
-# Odota hetki ja tarkista, että varmenteet luotiin onnistuneesti
+# Wait a moment and check that certificates were created successfully
 ls -la /opt/letsencrypt/live/stream.kanaliiga.fi/
 ```
 
-## Kontit eivät sammu (`containermod --restart --all` epäonnistuu)
+## Containers won't stop (`containermod --restart --all` fails)
 
-**Oire:** Komento `containermod --restart --all` tai `--stop --all` epäonnistuu virheilmoituksella "A stream container is running. Can't stop nginx-http/php-fpm at this time".
+**Symptom:** Command `containermod --restart --all` or `--stop --all` fails with the error message "A stream container is running. Can't stop nginx-http/php-fpm at this time".
 
-**Syy:** Turvallisuusmekanismi - nginx-http ja php-fpm -kontit eivät voi sammua, kun nginx-rtmp-kontteja on käynnissä. Tämä johtuu siitä, että nginx-rtmp-kontit tarvitsevat niitä autentikointiin (auth.php) ja mainosten näyttämiseen.
+**Cause:** Security mechanism - nginx-http and php-fpm containers cannot be stopped when nginx-rtmp containers are running. This is because nginx-rtmp containers need them for authentication (auth.php) and displaying ads.
 
-### Ratkaisu
+### Solution
 
 ```bash
-# 1. Listaa kaikki käynnissä olevat nginx-rtmp-kontit
+# 1. List all running nginx-rtmp containers
 containermod --list | grep nginx-rtmp
 
-# Esimerkki outputista:
+# Example output:
 # nginx-rtmp-JohnDoe
-# nginx-rtmp-proxy-AliceSmith
-# nginx-rtmp-BobJones
+# nginx-rtmp-proxy-DeSHa
+# nginx-rtmp-Fettis
 
-# 2. Sammuta jokainen nginx-rtmp-kontti erikseen
+# 2. Stop each nginx-rtmp container individually
 containermod --stop --name nginx-rtmp --caster JohnDoe
-containermod --stop --name nginx-rtmp --caster AliceSmith --proxy
-containermod --stop --name nginx-rtmp --caster BobJones
+containermod --stop --name nginx-rtmp --caster DeSHa --proxy
+containermod --stop --name nginx-rtmp --caster Fettis
 
-# 3. Varmista, että kaikki nginx-rtmp-kontit on sammutettu
+# 3. Verify that all nginx-rtmp containers are stopped
 containermod --list | grep nginx-rtmp
-# Tulosteen pitäisi olla tyhjä.
+# Output should be empty.
 
-# 4. Tarkista, että lock-tiedostot on poistettu
+# 4. Check that lock files have been removed
 ls -la /var/lock/nginx-rtmp-*.lock 2>/dev/null
-# Tulosteen pitäisi olla tyhjä tai näyttää "No such file".
+# Output should be empty or say "No such file".
 
-# 5. Nyt voit käynnistää peruskontit uudelleen
+# 5. Now you can restart the base containers
 containermod --restart --all
 
-# 6. Käynnistä nginx-rtmp-kontit takaisin tarpeen mukaan
-# (tai anna cron_workerin hoitaa homma, jos ne on ajastettu)
+# 6. Start the nginx-rtmp containers back up as needed
+# (or let cron_worker handle it, if they are scheduled)
 ```
 
-## Muu ongelma / Yleinen debuggaus
+## Other Problems / General Debugging
 
-Jos mikään yllä olevista ei auta, käy läpi nämä vaiheet:
+If none of the above helps, go through these steps:
 
-### 1. Tarkista Docker-lokit
+### 1. Check Docker Logs
 
 ```bash
-# Tarkista viimeisimmät lokit
+# Check latest logs
 docker logs --tail 100 <container_name>
 
-# Esim. nginx-rtmp-kontin lokit
+# E.g., nginx-rtmp container logs
 docker logs --tail 100 nginx-rtmp-JohnDoe
 
-# Seuraa lokeja reaaliajassa
+# Follow logs in real-time
 docker logs -f nginx-rtmp-JohnDoe
 
-# Etsi virheitä
+# Search for errors
 docker logs nginx-rtmp-JohnDoe | grep -i "error\|fail\|exception"
 ```
 
-### 2. Tarkista konttien tila
+### 2. Check Container Status
 
 ```bash
-# Listaa kaikki kontit (myös pysähtyneet)
+# List all containers (including stopped ones)
 docker ps -a
 
-# Tarkista kontin terveys
+# Check container health
 docker inspect haproxy | grep -A 10 "State"
 
-# Katso milloin kontti käynnistyi / sammui
+# See when container started / stopped
 docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 ```
 
-### 3. Tarkista palvelimen resurssit
+### 3. Check Server Resources
 
 ```bash
-# Levytila (pitäisi olla vähintään 10% vapaana)
+# Disk space (should be at least 10% free)
 df -h
 
-# Muisti (jos swap on käytössä, muisti on lopussa)
+# Memory (if swap is in use, memory is running out)
 free -h
 
-# CPU ja muisti per kontti
+# CPU and memory per container
 docker stats --no-stream
 
-# Järjestelmän kuormitus
+# System load
 uptime
 ```
 
-### 4. Tarkista verkko
+### 4. Check Network
 
 ```bash
-# Docker-verkko
+# Docker network
 docker network ls
 docker network inspect stream
 
-# Porttien kuuntelu
+# Listening ports
 netstat -tlnp | grep -E ":(80|443|1935|48[01][0-9][0-9])"
 
-# Onko HAProxy tavoitettavissa?
+# Is HAProxy reachable?
 curl -I http://localhost:80
 ```
 
-### 5. Viimeisenä keinona - täysi uudelleenkäynnistys
+### 5. As a Last Resort - Full Restart
 
-**VAROITUS:** Tämä katkaisee KAIKKI striimit! Sovi asiasta ensin muiden castereiden kanssa.
+**WARNING:** This disconnects ALL streams! Coordinate with other casters first.
 
 ```bash
-# Sammuta kaikki kontit
+# Stop all containers
 docker stop $(docker ps -q)
 
-# Käynnistä Docker-palvelu uudelleen
+# Restart Docker service
 systemctl restart docker
 
-# Käynnistä peruskontit
+# Start base containers
 containermod --start --all
 
-# Tarkista, että kaikki käynnistyi
+# Check that everything started
 containermod --list
 ```
 
-### 6. Dokumentoi ja pyydä apua
+### 6. Document and Ask for Help
 
-Jos ongelma jatkuu tai löydät uuden vikatilan:
-- Ota talteen tarpeelliset lokit.
-- Dokumentoi mitä teit ja mitä tapahtui.
-- Päivitä tämä wiki uudella ratkaisulla.
-- Pyydä apua kokeneemmalta.
+If the problem persists or you find a new fault condition:
+- Keep the necessary logs.
+- Document what you did and what happened.
+- Update this wiki with a new solution.
+- Ask a more experienced person for help.
 
 ---
 
-## Parhaat käytännöt
+## Best Practices
 
-### Ennen striimejä
-- **Aina** ajasta striimit etukäteen: `streammod --add`
-- **Tarkista**, ettei päällekkäisyyksiä ole: `streammod --upcoming`
-- **Varmista**, että peruskontit ovat käynnissä: `containermod --list`
+### Before streams
+- **Always** schedule streams in advance: `streammod --add`
+- **Check** that there are no overlaps: `streammod --upcoming`
+- **Verify** that base containers are running: `containermod --list`
 
-### Striimien aikana
-- **ÄLÄ** käynnistä nginx-http- tai php-fpm-kontteja uudelleen (autentikointi hajoaa).
-- **ÄLÄ** sammuta HAProxya full restartilla (pehmeä uudelleenlataus on ok: `docker kill -s HUP haproxy`).
-- **ÄLÄ** aja komentoa `containermod --restart --all` (epäonnistuu, jos striimejä on käynnissä).
+### During streams
+- **DO NOT** restart nginx-http or php-fpm containers (authentication will break).
+- **DO NOT** shut down HAProxy with a full restart (graceful reload is ok: `docker kill -s HUP haproxy`).
+- **DO NOT** run the command `containermod --restart --all` (it will fail if streams are running).
 
-### Huoltotoimenpiteet
-- **Sovi** aina muiden striimaajien kanssa ennen suuria muutoksia.
-- **Testaa** ensin staging-ympäristössä, jos mahdollista.
-- **Dokumentoi** kaikki tehdyt muutokset ja löydetyt ongelmat.
-- **Päivitä** tämä wiki, jos löydät uuden ratkaisun.
+### Maintenance operations
+- **Always coordinate** with other streamers before making major changes.
+- **Test** first in a staging environment if possible.
+- **Document** all changes made and problems found.
+- **Update** this wiki if you find a new solution.
 
-### Hätätilanteessa
-1. Tarkista Docker-lokit ensin.
-2. Googlaa virheilmoitus.
-3. Kysy apua Discordissa.
-4. Viimeisenä keinona: full restart (katkaisee striimit).
+### In an emergency
+1. Check Docker logs first.
+2. Google the error message.
+3. Ask for help in Discord.
+4. Last resort: full restart (cuts streams).
