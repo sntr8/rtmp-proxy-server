@@ -60,7 +60,7 @@ case $OPERATION in
             exit 1
         fi
 
-        read -r -p "Twitch title for the stream? (Format 'Kanaliiga <game> <series> | <Division> | <Caster> & <Co-Caster>'): " TITLE
+        read -r -p "Twitch title for the stream?: " TITLE
         read -r -p "Start time of the stream? (Format: DD.MM.YYYY HH:MM): " START_TIME
 
         if ! [[ "$START_TIME" =~ $REGEXP ]];
@@ -375,7 +375,7 @@ No changes: N
 
         case "$RESPONSE_TITLE" in
             [yY][eE][sS]|[yY])
-                read -r -p "Twitch title for the stream? (Format 'Kanaliiga <game> <series> | <Division> | <Caster> & <Co-Caster>'): " EDIT_TITLE
+                read -r -p "Twitch title for the stream?: " EDIT_TITLE
 
                 docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET title = '$EDIT_TITLE' WHERE id = $STREAM_ID"
                 echo "Updated to the database"
@@ -571,59 +571,122 @@ No changes: N
         docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET skip = false WHERE id = '$OPTION'"
     ;;
     "--help")
-        echo "$(basename "$0") -- Script to start or stop RTMP containers.
+        echo "$(basename "$0") -- Schedule and manage RTMP streams
 
-    Usage: $(basename "$0") <operation>
+DESCRIPTION:
+  Manages scheduled streams in the database. Streams should always be scheduled
+  in advance to enable automatic container startup/shutdown and Discord notifications.
 
-    Allowed operations: --list
-    -- add
-        An interactive tool to create new streams.
+USAGE:
+  $(basename "$0") <operation> [options]
 
-    --ended
-        Used to show a list of ended streams that have container running. Used internally on code. Not meant for user use, check --ending instead.
+USER OPERATIONS:
 
-    --ending
-        Used to show a list of ending streams.
+  --add
+    Interactive tool to schedule a new stream. Prompts for:
+    - Caster ID (from castermod --list --ids)
+    - Co-caster ID (optional, for proxy container)
+    - Channel ID (from channelmod --list --ids)
+    - Game ID (from gamemod --list --ids)
+    - Twitch title
+    - Start time (format: DD.MM.YYYY HH:MM)
+    - End time (format: DD.MM.YYYY HH:MM)
 
-        Usage: $(basename "$0") --ending
+    Usage: $(basename "$0") --add
 
-    --extend <id>
-        Extend container lifetime by 30 minutes
+    Note: Containers start 30 min before and stop 30 min after scheduled time.
 
-        Usage: $(basename "$0") --extend <id>
+  --add-proxy
+    Interactive tool to schedule a proxy-only container (no Twitch stream).
+    Automatically selects an available proxy channel (only1-proxy through only6-proxy).
 
-        Eg. $(basename "$0") --extend 1
+    Usage: $(basename "$0") --add-proxy
 
-        Parameters:
-        - id: id of the stream
+  --upcoming
+    List all scheduled future streams (both regular and proxy).
 
-    --list
-        Used for listing available channels. Will list all channels present in the database.
+    Usage: $(basename "$0") --upcoming
+    Usage: $(basename "$0") --upcoming --ids    (returns only IDs)
 
-        Usage: $(basename "$0") --list
+  --live
+    List currently live streams.
 
-    --live
-        Used to show a list of live streams.
+    Usage: $(basename "$0") --live
+    Usage: $(basename "$0") --live --ids        (returns only IDs)
 
-        Usage: $(basename "$0") --live
+  --ending
+    List streams ending within 30 minutes.
 
-    --set live|nonlive
-        Used to set stream live/nonlive. Used internally on code. Not meant for user use.
+    Usage: $(basename "$0") --ending
+    Usage: $(basename "$0") --ending --ids      (returns only IDs)
 
-    --starting
-        Used to show a list of starting streams. Used internally on code. Not meant for user use, check --upcoming instead.
+  --extend <stream_id>
+    Extend a stream's end time by 30 minutes.
 
-    --upcoming
-        Used to show a list of starting streams.
+    Usage: $(basename "$0") --extend 42
 
-        Usage: $(basename "$0") --upcoming
+    Parameters:
+      - stream_id: ID of the stream to extend
 
-    --update <id>
-        An interactive tool to update an existing defined stream
+  --update <stream_id>
+    Interactive tool to update an existing scheduled stream.
+    Allows editing caster, channel, game, title, start time, and end time.
 
-    --warnings
-        Used to show ending streams. Used internally on code. Not meant for user use, check --ending instead.
-    "
+    Usage: $(basename "$0") --update 42
+
+  --skip <stream_id>
+    Mark a stream to be skipped (container won't start automatically).
+    Use when a scheduled stream needs to be canceled but kept in database.
+
+    Usage: $(basename "$0") --skip 42
+
+  --unskip <stream_id>
+    Remove skip flag from a stream (re-enable automatic startup).
+
+    Usage: $(basename "$0") --unskip 42
+
+  --delete <stream_id>
+    Delete a stream from the database.
+
+    Usage: $(basename "$0") --delete 42
+
+INTERNAL OPERATIONS (used by cron_worker.sh):
+
+  --starting [--ids]
+    List streams starting within 30 minutes.
+
+  --ended <minutes>
+    List streams that ended <minutes> ago and still have containers running.
+
+  --warnings <minutes>
+    List streams ending in exactly <minutes> (for notifications).
+
+  --set live|nonlive <stream_id>
+    Mark a stream as live or not live.
+
+EXAMPLES:
+
+  # Schedule a new stream interactively
+  streammod --add
+
+  # List upcoming streams
+  streammod --upcoming
+
+  # Extend a stream that's running longer than expected
+  streammod --extend 42
+
+  # Cancel a scheduled stream (marks it to skip)
+  streammod --skip 42
+
+  # Update stream details
+  streammod --update 42
+
+NOTES:
+  - Always schedule streams in advance for automatic container management
+  - Stream collisions are NOT automatically checked - verify manually with --upcoming
+  - Time format must be DD.MM.YYYY HH:MM (e.g., 15.03.2026 19:30)
+  - Containers start 30 minutes before and stop 30 minutes after scheduled times
+"
     exit 0
 
     ;;

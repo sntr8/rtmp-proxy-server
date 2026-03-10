@@ -69,26 +69,84 @@ case $OPERATION in
         esac
     ;;
     "--help")
-        echo "$(basename "$0") -- Script to add or list games in the MySQL database.
+        echo "$(basename "$0") -- Manage games in the MySQL database
 
-    Usage: $(basename $0) <operation>
+DESCRIPTION:
+  Add and list games that can be streamed to Twitch. Each game has a technical name,
+  display name (must match Twitch exactly), abbreviation, and optional stream delay.
 
-    Allowed operations: --add, --modify, --list, --remove
+USAGE:
+  $(basename $0) <operation> [parameters]
 
-    --add
-        Used for adding a new game to the database. The program will ask interactively the data for the game.
+OPERATIONS:
 
-        Usage: $(basename $0) --add
+  --add
+    Interactive tool to add a new game to the database.
+    Prompts for:
+      - Technical name:  Short lowercase identifier (e.g., pubg, csgo, rl)
+      - Display name:    Official Twitch game name (e.g., PlayerUnknown's Battlegrounds)
+                         MUST match Twitch Helix API exactly for stream category to work!
+      - Abbreviation:    Short form for display (e.g., PUBG, CS:GO, RL)
+      - Delay:           Stream delay in seconds (0 for no delay, 480 for 8 minutes)
 
-    --list
-        Used for displaying data of games in the system. Leaving game empty will result displaying of all the games in the system.
+    Usage: $(basename $0) --add
 
-        Usage: $(basename $0) --list
-        Usage: $(basename $0) --list <game>
+    Example inputs:
+      Technical name:   pubg
+      Display name:     PlayerUnknown's Battlegrounds
+      Abbreviation:     PUBG
+      Delay:            480
 
-        Parameters:
-            - game: A technical name of the game
-    "
+  --list [option|game]
+    List games in the database.
+
+    Usage: $(basename $0) --list              (show all games with name and delay)
+    Usage: $(basename $0) --list --ids        (show IDs and names)
+    Usage: $(basename $0) --list --names      (show only technical names)
+    Usage: $(basename $0) --list pubg         (show specific game)
+
+EXAMPLES:
+
+  # Add a new game interactively
+  gamemod --add
+
+  # List all games
+  gamemod --list
+
+  # Get only game names (useful for scripts)
+  gamemod --list --names
+
+  # Check if a specific game exists
+  gamemod --list rl
+
+  # Get game IDs for streammod
+  gamemod --list --ids
+
+GAME CONFIGURATION:
+
+  Technical Name:
+    - Lowercase, no spaces
+    - Used in containermod commands
+    - Used in ads folder structure (nginx-http/html/ads/img/pubg/)
+
+  Display Name:
+    - MUST match Twitch category name exactly
+    - Used when setting stream category via Helix API
+    - Case-sensitive and punctuation-sensitive
+    - Verify at: https://www.twitch.tv/directory/category/[game-name]
+
+  Delay:
+    - In seconds (0 = no delay, 480 = 8 minutes)
+    - Applies to all streams for this game
+    - Used for competitive integrity (prevents stream sniping)
+    - 0 delay uses direct passthrough, >0 uses internal relay with buffer
+
+NOTES:
+  - Display name must be exact match with Twitch or category won't update
+  - Check Twitch directory URL to verify correct game name
+  - Common games: PUBG (480s), CS:GO (120s), Rocket League (0s), Dota 2 (300s)
+  - Delay affects container startup (requires internal_technical_user relay)
+"
     ;;
     *)
         echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"

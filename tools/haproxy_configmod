@@ -108,27 +108,104 @@ case $OPERATION in
 
     ;;
     "--help")
-        echo "$(basename "$0") -- Script to add or remove RTMP container routing to/from HAproxy config
+        echo "$(basename "$0") -- Manage HAProxy RTMP routing configuration
 
-    Usage: $(basename "$0") <operation>
+DESCRIPTION:
+  Dynamically add or remove RTMP container routing entries in HAProxy configuration.
+  Automatically performs graceful reload (HUP signal) after changes, which does NOT
+  interrupt active streams.
 
-    Allowed operations: --add, --remove
+  This script is usually called automatically by containermod when starting/stopping
+  nginx-rtmp containers.
 
-    --add
-        Used for adding a new RTMP container routing
+USAGE:
+  $(basename "$0") <operation> <parameters>
 
-        Usage: $(basename "$0") --add <caster> <channel>
+OPERATIONS:
 
-        Parameters:
-            - caster: The nickname of the caster operating OBS or similar streaming software
-            - channel: The name of the channel for which the stream will be sent to
-    --remove
-        Used for removing an existing RTMP container routing
+  --add <caster> <channel>
+    Add a new RTMP routing configuration for a caster's container.
 
-        Usage: $(basename "$0") --remove <caster>
+    Creates HAProxy frontend/backend configuration block:
+      - Frontend binds to channel's assigned port
+      - Backend routes to nginx-rtmp-<caster> container on port 1935
+      - Configuration wrapped in # ::<caster>::start and # ::<caster>::end markers
 
-        Parameters:
-            - caster: The nickname of the caster operating OBS or similar streaming software
-    "
+    Parameters:
+      - caster:  Caster nickname (e.g., JohnDoe)
+      - channel: Channel name (e.g., kanaliigatv, only1-proxy)
+
+    Usage: $(basename "$0") --add JohnDoe kanaliigatv
+    Usage: $(basename "$0") --add JohnDoe only1-proxy
+
+  --remove <caster>
+    Remove an existing RTMP routing configuration for a caster.
+
+    Removes the configuration block between # ::<caster>::start and # ::<caster>::end
+    markers from /opt/haproxy/haproxy.cfg
+
+    Parameters:
+      - caster: Caster nickname (e.g., JohnDoe)
+
+    Usage: $(basename "$0") --remove JohnDoe
+
+CONFIGURATION DETAILS:
+
+  Template Location:
+    haproxy/config/haproxy-rtmp.cfg in Git repository
+
+  Generated Config Example:
+    # ::JohnDoe::start
+    frontend rtmp-kanaliigatv
+        bind *:48001
+        mode tcp
+        default_backend JohnDoe
+
+    backend JohnDoe
+        server nginx-rtmp-JohnDoe nginx-rtmp-JohnDoe:1935 check
+    # ::JohnDoe::end
+
+  File Locking:
+    Uses /opt/haproxy/.haproxy.cfg.lck to prevent concurrent modifications
+
+  Reload Mechanism:
+    docker kill -s HUP haproxy (graceful reload, no stream interruption)
+
+EXAMPLES:
+
+  # Add routing for regular stream container
+  haproxy_configmod --add JohnDoe kanaliigatv
+
+  # Add routing for proxy container
+  haproxy_configmod --add AliceSmith only1-proxy
+
+  # Remove routing when container stops
+  haproxy_configmod --remove JohnDoe
+
+  # Manually check configuration
+  cat /opt/haproxy/haproxy.cfg | grep -A 6 "::JohnDoe::"
+
+TROUBLESHOOTING:
+
+  If config has duplicate or broken entries:
+    1. Edit /opt/haproxy/haproxy.cfg manually
+    2. Remove broken/duplicate ::caster:: blocks
+    3. Reload: docker kill -s HUP haproxy
+
+  If lock file prevents edits:
+    rm /opt/haproxy/.haproxy.cfg.lck
+
+  Common Issues:
+    - Multiple ::start/::end blocks for same caster (duplicate adds)
+    - Orphaned blocks (container removed but config not cleaned up)
+    - Missing end marker (incomplete block)
+
+NOTES:
+  - Usually called automatically by containermod --start/--stop
+  - Lock file ensures only one modification at a time
+  - Graceful reload preserves existing connections
+  - Config changes are immediate after reload (no restart needed)
+  - Port assignment comes from channels table in database
+"
     ;;
 esac

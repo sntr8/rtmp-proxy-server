@@ -190,50 +190,107 @@ case $OPERATION in
         esac
     ;;
     "--help")
-        echo "$(basename "$0") -- Script to start or stop RTMP containers.
+        echo "$(basename "$0") -- Manage Twitch channels and API tokens
 
-    Usage: $(basename "$0") <operation>
+DESCRIPTION:
+  Manage Twitch channel configurations, including API tokens for stream key fetching
+  and channel information updates. Handles both regular Twitch channels and internal
+  proxy channels.
 
-    Allowed operations: --get, --get-proxy-id, --list, --refresh-tokens, --set
-    --get
-        Used for fetching values from database.
+USAGE:
+  $(basename "$0") <operation> [parameters]
 
-        Usage: $(basename "$0") --get channel key
+OPERATIONS:
 
-        Parameters:
-            - channel: Name of the channel
-            - key: Key of the value
-    --get-proxy-id
-        Used for fetching the channel ID for proxy-only channel
+  --list [option]
+    List available channels in the database.
 
-        Usage: $(basename "$0") --get-proxy-id
-    --list
-        Used for listing available channels. Will list all channels present in the database.
+    Usage: $(basename "$0") --list            (show Twitch channel names)
+    Usage: $(basename "$0") --list --ids      (show IDs and names)
 
-        Usage: $(basename "$0") --list
-            - Shows names of available channels
+    Note: Only lists channels with access_token (excludes proxy-only channels)
 
-        Usage: $(basename "$0") --list <option>
+  --get-id <channel_name>
+    Get the database ID for a specific channel.
 
-        Options:
-            --ids: List IDs of channels
-    --refresh-tokens
-        Used for manually start token refresh process
+    Usage: $(basename "$0") --get-id kanaliigatv
 
-        Usage: $(basename "$0") --refresh-tokens <channel>
+    Returns: Channel ID number
 
-        Parameters:
-            --channel: Channel that tokens needs to be refreshed
-    --set
-        Used for setting values to database
+  --get <channel> <key>
+    Fetch a specific value from the database for a channel.
 
-        Usage: $(basename "$0") --set channel key value
+    Parameters:
+      - channel: Channel name (e.g., kanaliigatv)
+      - key:     Database field name (currently only 'refresh_token' supported)
 
-        Parameters:
-            - channel: Name of the channel
-            - key: Key of the value
-            - value: Value for the key
-    "
+    Usage: $(basename "$0") --get kanaliigatv refresh_token
+
+  --set <channel> <key> <value>
+    Update a specific value in the database for a channel.
+
+    Parameters:
+      - channel: Channel name (e.g., kanaliigatv)
+      - key:     Field to update (access_token, client_id, or refresh_token)
+      - value:   New value for the field
+
+    Usage: $(basename "$0") --set kanaliigatv access_token abc123xyz789
+    Usage: $(basename "$0") --set kanaliigatv client_id gp762nuuoqcoxypju8c569th9wz7q5
+    Usage: $(basename "$0") --set kanaliigatv refresh_token def456uvw012
+
+  --refresh-tokens <channel>
+    Manually trigger Twitch token refresh using twitchtokengenerator.com API.
+    Uses the channel's refresh_token to obtain a new access_token.
+
+    Usage: $(basename "$0") --refresh-tokens kanaliigatv
+
+    Note: Tokens expire after 60 days. System attempts auto-refresh when needed.
+
+  --test-tokens <channel>
+    Validate that a channel's Twitch API tokens are currently valid.
+
+    Usage: $(basename "$0") --test-tokens kanaliigatv
+
+    Returns: Exit 0 if valid, exit 1 if invalid
+
+EXAMPLES:
+
+  # List all Twitch channels
+  channelmod --list
+
+  # Get channel ID for use in other commands
+  channelmod --get-id kanaliigatv
+
+  # Check if tokens are valid
+  channelmod --test-tokens kanaliigatv
+
+  # Manually refresh expired tokens
+  channelmod --refresh-tokens kanaliigatv
+
+  # Update access token after manual fetch from twitchtokengenerator.com
+  channelmod --set kanaliigatv access_token new_token_here
+  channelmod --set kanaliigatv refresh_token new_refresh_token_here
+  channelmod --set kanaliigatv client_id new_client_id_here
+
+  # Get current refresh token
+  channelmod --get kanaliigatv refresh_token
+
+TWITCH API TOKENS:
+  Channels need three tokens from twitchtokengenerator.com:
+    - access_token:  Used for Twitch Helix API calls (expires in 60 days)
+    - refresh_token: Used to refresh the access_token automatically
+    - client_id:     Application identifier
+
+  When access_token expires:
+    1. System automatically attempts refresh using refresh_token
+    2. If auto-refresh fails, Discord notification is sent
+    3. Manual update required using --set command
+
+NOTES:
+  - Proxy channels (e.g., only1-proxy) don't have Twitch tokens
+  - Token validation happens automatically when containers start
+  - Failed token refresh triggers Discord alerts to support group
+"
 
     ;;
     *)

@@ -119,55 +119,88 @@ case $OPERATION in
         esac
     ;;
     "--help")
-        echo "$(basename "$0") -- Script to add, remove or modify casters in the MySQL database.
+        echo "$(basename "$0") -- Manage casters in the MySQL database
 
-    Usage: $(basename $0) <operation>
+DESCRIPTION:
+  Add, remove, activate, and list casters who can authenticate to the RTMP service.
+  Each caster has a unique stream key and Discord ID for notifications.
 
-    Allowed operations: --add, --activate, --disable, --list, --remove
+USAGE:
+  $(basename $0) <operation> [parameters]
 
-    --add
-        Used for adding a new caster to the database
+OPERATIONS:
 
-        Usage: $(basename $0) --add <caster> <discord_id> <stream key>
+  --add <nick> <discord_id> [stream_key]
+    Add a new caster to the database.
 
-        Parameters:
-            - caster: A nickname of the caster
-            - discord_id: A Discord ID for the caster. This is not Discord tag
-              (foo#1234) but a Long. This can be found by activating Developer
-              mode for Discord, right clicking the user and selecting \"Copy ID\"
-            - stream key: An existing stream key for the caster. The stream key
-              will be generated if it's not provided by the executor.
-    --activate
-        Used for activating casters so they can authenticate to the RTMP service.
+    Parameters:
+      - nick:       Caster's nickname (e.g., JohnDoe)
+      - discord_id: Caster's Discord user ID (long number, NOT nick#1234)
+                    Get this from Discord Developer Mode > Right-click user > Copy User ID
+      - stream_key: Optional. Auto-generated if not provided (format: nick-hexstring)
 
-        Usage: $(basename $0) --activate <caster>
+    Usage: $(basename $0) --add JohnDoe 123456788901234567
+    Usage: $(basename $0) --add JohnDoe 123456788901234567 JohnDoe-abc123def456
 
-        Parameters:
-            - caster: A nickname of the caster
-    --disable
-        Used for disabling casters so they can't authenticate to the RTMP service.
+  --activate <nick>
+    Activate a caster, allowing them to authenticate to the RTMP service.
+    Sets the 'active' flag to true in the database.
 
-        Usage: $(basename $0) --disable <caster>
+    Usage: $(basename $0) --activate JohnDoe
 
-        Parameters:
-            - caster: A nickname of the caster
-    --list
-        Used for displaying data of (a) caster(s) in the system. Leaving <caster>
-        empty will result displaying of all the casters in the system.
+    Note: Casters are automatically activated when their container starts
+          and deactivated when it stops.
 
-        Usage: $(basename $0) --list
-        Usage: $(basename $0) --list <caster>
+  --disable <nick>
+    Disable a caster, preventing authentication to the RTMP service.
+    Sets the 'active' flag to false. Cannot disable if caster has active containers.
 
-        Parameters:
-            - caster: A nickname of the caster
-    --remove
-        Used for removing a caster to the database
+    Usage: $(basename $0) --disable JohnDoe
 
-        Usage: $(basename $0) --remove <caster>
+  --list [option|nick]
+    List casters in the database.
 
-        Parameters:
-            - caster: A nickname of the caster
-    "
+    Usage: $(basename $0) --list              (show all casters with details)
+    Usage: $(basename $0) --list --ids        (show IDs and nicks)
+    Usage: $(basename $0) --list --nicks      (show only nicks)
+    Usage: $(basename $0) --list JohnDoe        (show specific caster)
+
+  --remove <nick>
+    Remove a caster from the database (requires confirmation).
+
+    Usage: $(basename $0) --remove JohnDoe
+
+    Warning: This permanently deletes the caster. Cannot be undone.
+
+EXAMPLES:
+
+  # Add a new caster (auto-generates stream key)
+  castermod --add JohnDoe 123456788901234567
+
+  # Add a caster with specific stream key
+  castermod --add JohnDoe 123456788901234567 JohnDoe-customkey123
+
+  # List all casters
+  castermod --list
+
+  # Get only nicknames (useful for scripts)
+  castermod --list --nicks
+
+  # Activate a caster manually
+  castermod --activate JohnDoe
+
+  # Check specific caster details
+  castermod --list JohnDoe
+
+  # Remove a caster
+  castermod --remove OldCaster
+
+NOTES:
+  - Stream keys are automatically generated in format: nick-hexstring
+  - Discord IDs are used for automated notifications
+  - Internal users (internal_technical_user, vlc_viewer) are excluded from most operations
+  - Active status is managed automatically by containermod when containers start/stop
+"
     ;;
     *)
         echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"

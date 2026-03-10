@@ -5,33 +5,96 @@ source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
 usage() {
-  echo "$(basename "$0") -- Tool to manage RTMP-proxy containers.
+  echo "$(basename "$0") -- Manage RTMP streaming containers
 
-Usage:
-$(basename "$0") <optstring> <parameter>
+DESCRIPTION:
+  Manages base infrastructure containers (mysql, php-fpm, nginx-http, haproxy) and
+  per-caster stream containers (nginx-rtmp). Safety mechanisms prevent stopping
+  infrastructure containers while stream containers are active.
 
-Examples:
-Restart all containers:
-$(basename "$0") -ra
+CONTAINER TYPES:
+  Base containers (required for operation):
+    - mysql:      Database backend
+    - php-fpm:    PHP processor for auth.php and ads.php
+    - nginx-http: HTTP server for /ads/ and /rtmp/ contexts
+    - haproxy:    Load balancer and traffic router
 
-Start a game container
-$(basename "$0") -s -n nginx-rtmp -C <caster> -c <channel> -g <game>
+  Stream containers (per-caster, created on demand):
+    - nginx-rtmp-<caster>:       Game stream container (sends to Twitch)
+    - nginx-rtmp-proxy-<caster>: Proxy container (internal relay only)
 
-Stop a proxy container
-$(basename "$0") -Sp -n nginx-rtmp -C <caster>
+USAGE:
+  $(basename "$0") <options>
 
-Options
--a, -all                        used together with -r, -s, -S, mutually exclusive with -n
--C, --caster <caster name>      the name of the caster
--c, --channel <channel name>    the name of the channel
--g, --game <game name>          the name of the game
--h, --help                      display this help
--l, --list                      list running containers
--n, --name <container name>     the name of the container: rtmp-nginx, mysql, php-fpm, nginx-http and haproxy. Mutually exclusive with -a
--p, --proxy                     handle the container as proxy
--r, --restart                   restart a container, requires either -n or -a
--s, --start                     start a container, requires either -n or -a and -Ccg
--S, --stop                      stop a container, requires either -n or -a and -C, might need -p
+COMMON OPERATIONS:
+  List all running containers:
+    $(basename "$0") --list
+
+  Start all base containers:
+    $(basename "$0") --start --all
+
+  Restart all base containers (fails if streams active):
+    $(basename "$0") --restart --all
+
+  Restart single base container:
+    $(basename "$0") --restart --name haproxy
+
+  Start a game stream container:
+    $(basename "$0") --start --name nginx-rtmp --caster JohnDoe --channel johndoe --game pubg
+
+  Start a proxy container:
+    $(basename "$0") --start --name nginx-rtmp --caster JohnDoe --channel johndoe-proxy --proxy
+
+  Stop a stream container:
+    $(basename "$0") --stop --name nginx-rtmp --caster JohnDoe
+
+  Stop a proxy container:
+    $(basename "$0") --stop --name nginx-rtmp --caster JohnDoe --proxy
+
+OPTIONS:
+  -a, --all                      Operate on all base containers (mysql, php-fpm, nginx-http, haproxy)
+                                 Mutually exclusive with --name
+
+  -C, --caster <caster>          Caster nickname (required for nginx-rtmp operations)
+
+  -c, --channel <channel>        Channel name (required when starting nginx-rtmp)
+
+  -g, --game <game>              Game name (required when starting non-proxy nginx-rtmp)
+
+  -h, --help                     Display this help message
+
+  -k, --key <stream_key>         Predefined stream key (optional, overrides Twitch API fetch)
+
+  -l, --list                     List all running containers
+
+  -n, --name <container>         Container name: nginx-rtmp, mysql, php-fpm, nginx-http, haproxy
+                                 Mutually exclusive with --all
+
+  -p, --proxy                    Handle nginx-rtmp container as proxy-only (no Twitch streaming)
+
+  -r, --restart                  Restart container(s). NOT supported for nginx-rtmp containers.
+                                 Requires --name or --all
+
+  -s, --start                    Start container(s). For nginx-rtmp requires --caster, --channel,
+                                 and --game (unless --proxy is specified)
+
+  -S, --stop                     Stop container(s). For nginx-rtmp requires --caster (and --proxy if applicable)
+
+IMPORTANT NOTES:
+  - nginx-http and php-fpm CANNOT be stopped while nginx-rtmp containers are running
+    (safety mechanism checked via /var/lock/nginx-rtmp-*.lock files)
+  - nginx-rtmp containers CANNOT use --restart (use --stop then --start instead)
+  - To restart all: first stop all nginx-rtmp containers, then restart base containers
+
+EXAMPLES:
+  # Full restart procedure
+  containermod --stop --name nginx-rtmp --caster JohnDoe
+  containermod --stop --name nginx-rtmp --caster JohnDoe --proxy
+  containermod --restart --all
+
+  # Manual stream start with predefined key
+  containermod --start --name nginx-rtmp --caster JohnDoe --channel johndoe \\
+    --game pubg --key JohnDoe-xxxxxxxxxxxx
 "
 }
 
@@ -271,7 +334,7 @@ stop_container() {
             fi
             castermod --disable "$CASTER"
         ;;
-        "nginx-http"|"php-fpm")
+        "nginx-http"|"php-fpm"|"mysql"|"haproxy")
             if check_stream_container_lock;
             then
                 docker stop "$CONTAINER"
