@@ -4,8 +4,21 @@ SOURCE_DIR="$(dirname "$0")"
 source $SOURCE_DIR/functions/functions.sh
 source /etc/profile
 
+# Validate datetime format using date command
+validate_datetime() {
+    local input="$1"
+    # Try to parse the date - if it fails, date will return an error
+    # macOS uses -j flag, Linux doesn't need it - try both
+    if date -j -f "%d.%m.%Y %H:%M" "$input" "+%Y-%m-%d %H:%M:%S" 2>/dev/null >/dev/null || \
+       date -d "$input" "+%Y-%m-%d %H:%M:%S" 2>/dev/null >/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 OPERATION=$1
-REGEXP='^([0-2][0-9]|3[0-1])\.(0[1-9]|1[0-2])\.202[1-9]\s([01]?[0-9]|2[0-3]):[0-5][0-9]$'
+REGEXP='^([0-2][0-9]|3[0-1])\.(0[1-9]|1[0-2])\.[0-9]{4}\s([01]?[0-9]|2[0-3]):[0-5][0-9]$'
 
 if [ -z "$OPERATION" ];
 then
@@ -69,6 +82,12 @@ case $OPERATION in
             exit 1
         fi
 
+        if ! validate_datetime "$START_TIME";
+        then
+            echo "Start time is not a valid date/time"
+            exit 1
+        fi
+
         if ! db_is_channel_free "$START_TIME" $CHANNEL;
         then
             echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
@@ -81,7 +100,13 @@ case $OPERATION in
 
         if ! [[ "$END_TIME" =~ $REGEXP ]];
         then
-            echo "Start time is not in a valid format"
+            echo "End time is not in a valid format"
+            exit 1
+        fi
+
+        if ! validate_datetime "$END_TIME";
+        then
+            echo "End time is not a valid date/time"
             exit 1
         fi
 
@@ -120,9 +145,9 @@ case $OPERATION in
             [yY][eE][sS]|[yY])
                 if [ ! -z $COCASTER ];
                 then
-                  docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`cocaster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $COCASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %T'), STR_TO_DATE('$END_TIME','%d.%m.%Y %T'))"
+                  docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`cocaster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $COCASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %H:%i'), STR_TO_DATE('$END_TIME','%d.%m.%Y %H:%i'))"
                 else
-                  docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %T'), STR_TO_DATE('$END_TIME','%d.%m.%Y %T'))"
+                  docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, $GAME, '$TITLE', false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %H:%i'), STR_TO_DATE('$END_TIME','%d.%m.%Y %H:%i'))"
                 fi
                 if [ $? -eq 0 ];
                 then
@@ -157,13 +182,25 @@ case $OPERATION in
             exit 1
         fi
 
+        if ! validate_datetime "$START_TIME";
+        then
+            echo "Start time is not a valid date/time"
+            exit 1
+        fi
+
         echo "Container will be started 30 minutes before the stream, if possible."
 
         read -r -p "End time of the stream? (Format: DD.MM.YYYY HH:MM): " END_TIME
 
         if ! [[ "$END_TIME" =~ $REGEXP ]];
         then
-            echo "Start time is not in a valid format"
+            echo "End time is not in a valid format"
+            exit 1
+        fi
+
+        if ! validate_datetime "$END_TIME";
+        then
+            echo "End time is not a valid date/time"
             exit 1
         fi
 
@@ -202,7 +239,7 @@ case $OPERATION in
         read -r -p "Are you sure you want to create a proxy server with above details? [y/N] " RESPONSE
         case "$RESPONSE" in
             [yY][eE][sS]|[yY])
-                docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $PROXY_CHANNEL_ID, false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %T'), STR_TO_DATE('$END_TIME','%d.%m.%Y %T'))"
+                docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $PROXY_CHANNEL_ID, false, false, STR_TO_DATE('$START_TIME','%d.%m.%Y %H:%i'), STR_TO_DATE('$END_TIME','%d.%m.%Y %H:%i'))"
                 if [ $? -eq 0 ];
                 then
                     exit 0
@@ -397,6 +434,12 @@ No changes: N
                     exit 1
                 fi
 
+                if ! validate_datetime "$EDIT_START_TIME";
+                then
+                    echo "Time is not a valid date/time"
+                    exit 1
+                fi
+
                 if ! db_is_channel_free "$EDIT_START_TIME" $(channelmod --get-id $CHANNEL_NAME) $STREAM_ID;
                 then
                   echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
@@ -411,7 +454,7 @@ No changes: N
 
                 START_TIME="$EDIT_START_TIME"
 
-                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET start_time = STR_TO_DATE('$EDIT_START_TIME','%d.%m.%Y %T') WHERE id = $STREAM_ID"
+                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET start_time = STR_TO_DATE('$EDIT_START_TIME','%d.%m.%Y %H:%i') WHERE id = $STREAM_ID"
                 echo "Updated to the database"
             ;;
         esac
@@ -431,6 +474,12 @@ No changes: N
                     exit 1
                 fi
 
+                if ! validate_datetime "$EDIT_END_TIME";
+                then
+                    echo "Time is not a valid date/time"
+                    exit 1
+                fi
+
                 if ! db_is_channel_free "$EDIT_END_TIME" $(channelmod --get-id $CHANNEL_NAME) $STREAM_ID;
                 then
                   echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
@@ -443,7 +492,7 @@ No changes: N
                     exit 1
                 fi
 
-                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET end_time = STR_TO_DATE('$EDIT_END_TIME','%d.%m.%Y %T') WHERE id = $STREAM_ID"
+                docker exec $CONTAINER_ID mysql --defaults-extra-file=/creds.cnf -sN -e "UPDATE streams SET end_time = STR_TO_DATE('$EDIT_END_TIME','%d.%m.%Y %H:%i') WHERE id = $STREAM_ID"
                 echo "Updated to the database"
             ;;
         esac
