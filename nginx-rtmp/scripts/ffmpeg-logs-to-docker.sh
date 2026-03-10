@@ -1,6 +1,6 @@
 #!/bin/sh
 
-until [ -f /opt/nginx/logs/ffmpeg.log ]
+until [ -f "/opt/nginx/logs/ffmpeg.log" ]
 do
      sleep 5
 done
