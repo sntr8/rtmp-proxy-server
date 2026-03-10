@@ -102,7 +102,14 @@ do
     ID=${ID%$'\r'}
     echo "[$ID] Staring processing"
     CASTER=$(db_get_caster_with_stream_id $ID)
+    CHANNEL=$(db_get_channel_with_stream_id $ID)
     COCASTER=$(db_get_cocaster_name_with_stream_id $ID)
+    PROXYOPT=""
+
+    if [[ "$CHANNEL" == *-proxy ]];
+    then
+        PROXYOPT="--proxy"
+    fi
 
     if MESSAGE=$(containermod --stop --name nginx-rtmp --caster $CASTER $PROXYOPT;)
     then
