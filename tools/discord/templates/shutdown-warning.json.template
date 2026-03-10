@@ -6,7 +6,7 @@
           "name": "$CONTAINER_NAME_PREFIX-$CASTER",
           "icon_url": "https://cdn0.iconfinder.com/data/icons/social-network-7/50/16-512.png"
         },
-        "description": "Your stream is scheduled to end in 15 minutes. Container can be running up to 30 minutes past the stream end time if following streams on the channel allows it. You can try extending the container lifetime by 30 minutes from [this link](http://stream.kanaliiga.fi/ui/extend.html) if needed.\n\nScheduled stream end time: $END_TIME\n\nEstimated shut down time: $SHUTDOWN_TIME",
+        "description": "Your stream is scheduled to end in 15 minutes. Container can be running up to 30 minutes past the stream end time if following streams on the channel allows it. Contact your administrator to extend the container lifetime if needed.\n\nScheduled stream end time: $END_TIME\n\nEstimated shut down time: $SHUTDOWN_TIME",
         "color": "16752640"
     }],
     "content":"<@$DISCORD_ID>"
