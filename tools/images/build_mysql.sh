@@ -8,13 +8,31 @@ then
     VERSION=devel
 fi
 
+# Determine registry configuration
+if [ -n "$REGISTRY_URL" ]; then
+    # Custom registry (e.g., registry.gitlab.com/user/project)
+    REGISTRY="$REGISTRY_URL"
+elif [ -n "$DOCKER_USERNAME" ]; then
+    # Docker Hub
+    REGISTRY="$DOCKER_USERNAME"
+else
+    # Local only - no registry
+    REGISTRY=""
+fi
+
 docker build $OPTS -t mysql mysql
 BUILD_SUCCESS=$?
 
 if [ $BUILD_SUCCESS -eq 0 ];
 then
-    docker tag mysql registry.gitlab.com/kanaliiga/stream-rtmp/mysql":$VERSION"
-    docker push registry.gitlab.com/kanaliiga/stream-rtmp/mysql":$VERSION"
+    if [ -n "$REGISTRY" ]; then
+        # Tag and push to registry
+        docker tag mysql "$REGISTRY/mysql:$VERSION"
+        echo "Pushing mysql:$VERSION to $REGISTRY"
+        docker push "$REGISTRY/mysql:$VERSION"
+    else
+        echo "MySQL built successfully (local only, no push)"
+    fi
 else
-    echo "mysql build failed"
+    echo "MySQL build failed"
 fi

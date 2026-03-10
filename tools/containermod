@@ -116,12 +116,45 @@ check_running() {
     fi
 }
 
+get_image_name() {
+    # Constructs full image name based on registry configuration
+    # Args: $1 = image name (e.g., haproxy, mysql)
+    #       $2 = version tag (e.g., v1.6)
+    local IMAGE_NAME="$1"
+    local VERSION="$2"
+
+    if [ -n "$REGISTRY_URL" ]; then
+        # Custom registry
+        echo "$REGISTRY_URL/$IMAGE_NAME:$VERSION"
+    elif [ -n "$DOCKER_USERNAME" ]; then
+        # Docker Hub
+        echo "$DOCKER_USERNAME/$IMAGE_NAME:$VERSION"
+    else
+        # Local images only
+        echo "$IMAGE_NAME:latest"
+    fi
+}
+
 pull_container() {
     PULLED_IMAGE_VERSION="$(echo "$1" | tr '-' '_' | tr '[:lower:]' '[:upper:]')""_VERSION"
-    echo "Pulling image $1 version ${!PULLED_IMAGE_VERSION}"
-    if ! docker pull registry.gitlab.com/kanaliiga/stream-rtmp/"$1:${!PULLED_IMAGE_VERSION}";
-    then
-        exit 1
+    IMAGE_NAME=$(get_image_name "$1" "${!PULLED_IMAGE_VERSION}")
+
+    # Only pull if using a registry (not local)
+    if [ -n "$REGISTRY_URL" ] || [ -n "$DOCKER_USERNAME" ]; then
+        echo "Pulling image $IMAGE_NAME"
+        if ! docker pull "$IMAGE_NAME";
+        then
+            echo "ERROR: Failed to pull $IMAGE_NAME"
+            exit 1
+        fi
+    else
+        echo "Using local image: $IMAGE_NAME"
+        # Verify local image exists
+        if ! docker image inspect "$IMAGE_NAME" > /dev/null 2>&1; then
+            echo "ERROR: Local image $IMAGE_NAME not found. Build it first with:"
+            echo "  cd tools && ./build_all_images.sh"
+            exit 1
+        fi
     fi
 }
 
@@ -165,6 +198,7 @@ run_container() {
                 cp /tmp/"$SESSION_ID"/haproxy/config/haproxy.cfg /opt/haproxy/haproxy.cfg
                 rm -rf /tmp/"$SESSION_ID"
 
+                HAPROXY_IMAGE=$(get_image_name "haproxy" "$HAPROXY_VERSION")
                 docker run --rm --net stream --name haproxy -d \
                 -e FQDN="$FQDN" \
                 -e ADMIN_EMAIL="$ADMIN_EMAIL" \
@@ -176,7 +210,7 @@ run_container() {
                 -p 48001-48010:48001-48010 \
                 -p 48101-48110:48101-48110 \
                 --sysctl net.ipv4.ip_unprivileged_port_start=0 \
-                registry.gitlab.com/kanaliiga/stream-rtmp/haproxy:$HAPROXY_VERSION
+                "$HAPROXY_IMAGE"
             else
                 echo "Git clone failed"
                 exit 1
@@ -191,7 +225,8 @@ run_container() {
 
             pull_container "$CONTAINER"
 
-            ID=$(docker run --rm --net stream --name mysql -d -v /opt/mysql/data/:/var/lib/mysql -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD" -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -e MYSQL_DATABASE="$MYSQL_DATABASE" registry.gitlab.com/kanaliiga/stream-rtmp/mysql:$MYSQL_VERSION)
+            MYSQL_IMAGE=$(get_image_name "mysql" "$MYSQL_VERSION")
+            ID=$(docker run --rm --net stream --name mysql -d -v /opt/mysql/data/:/var/lib/mysql -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD" -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -e MYSQL_DATABASE="$MYSQL_DATABASE" "$MYSQL_IMAGE")
             docker exec -it "$ID" /bin/sh -c 'envsubst < /creds.cnf.template > /creds.cnf'
         ;;
         "nginx-http")
@@ -203,7 +238,8 @@ run_container() {
 
             pull_container "$CONTAINER"
 
-            docker run --rm --net stream --name nginx-http -d --add-host=host.docker.internal:host-gateway registry.gitlab.com/kanaliiga/stream-rtmp/nginx-http:$NGINX_HTTP_VERSION
+            NGINX_HTTP_IMAGE=$(get_image_name "nginx-http" "$NGINX_HTTP_VERSION")
+            docker run --rm --net stream --name nginx-http -d --add-host=host.docker.internal:host-gateway "$NGINX_HTTP_IMAGE"
         ;;
         "nginx-rtmp")
             if check_running "mysql";
@@ -269,17 +305,19 @@ run_container() {
                 STREAM_DELAY=${STREAM_DELAY%$'\r'}
             fi
 
+            NGINX_RTMP_IMAGE=$(get_image_name "nginx-rtmp" "$NGINX_RTMP_VERSION")
+
             if [ $STREAM_DELAY -eq 0 ] && ! $PROXY;
             then
-                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e GAME="$GAME" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e STREAM_DELAY="0" -e PROXY_ONLY=false registry.gitlab.com/kanaliiga/stream-rtmp/nginx-rtmp:$NGINX_RTMP_VERSION
+                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e GAME="$GAME" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e STREAM_DELAY="0" -e PROXY_ONLY=false "$NGINX_RTMP_IMAGE"
             elif $PROXY;
             then
-                docker run --rm --net stream --name nginx-rtmp-proxy-"$CASTER" -d -e CASTER="$CASTER" -e STREAM_DELAY="0" -e PROXY_ONLY=true registry.gitlab.com/kanaliiga/stream-rtmp/nginx-rtmp:$NGINX_RTMP_VERSION
+                docker run --rm --net stream --name nginx-rtmp-proxy-"$CASTER" -d -e CASTER="$CASTER" -e STREAM_DELAY="0" -e PROXY_ONLY=true "$NGINX_RTMP_IMAGE"
             else
                 INTERNAL_STREAM_KEY=$(docker exec "$MYSQL_CONTAINER_ID" mysql --defaults-extra-file=/creds.cnf -sN -e "SELECT stream_key FROM casters WHERE nick = 'internal_technical_user'")
                 INTERNAL_STREAM_KEY=${INTERNAL_STREAM_KEY%$'\r'}
 
-                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e GAME="$GAME" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e INTERNAL_STREAM_KEY="$INTERNAL_STREAM_KEY" -e STREAM_DELAY="$STREAM_DELAY" -e PROXY_ONLY=false registry.gitlab.com/kanaliiga/stream-rtmp/nginx-rtmp:$NGINX_RTMP_VERSION
+                docker run --rm --net stream --name nginx-rtmp-"$CASTER" -d -e CASTER="$CASTER" -e CHANNEL="$CHANNEL" -e GAME="$GAME" -e TWITCH_STREAM_KEY="$TWITCH_STREAM_KEY" -e INTERNAL_STREAM_KEY="$INTERNAL_STREAM_KEY" -e STREAM_DELAY="$STREAM_DELAY" -e PROXY_ONLY=false "$NGINX_RTMP_IMAGE"
             fi
 
             STARTUP_RESULT=$?
@@ -308,7 +346,8 @@ run_container() {
 
             pull_container "$CONTAINER"
 
-            docker run --rm --net stream --name php-fpm -d -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -e MYSQL_DATABASE="$MYSQL_DATABASE" registry.gitlab.com/kanaliiga/stream-rtmp/php-fpm:$PHP_FPM_VERSION
+            PHP_FPM_IMAGE=$(get_image_name "php-fpm" "$PHP_FPM_VERSION")
+            docker run --rm --net stream --name php-fpm -d -e MYSQL_USER="$MYSQL_USER" -e MYSQL_PASSWORD="$MYSQL_PASSWORD" -e MYSQL_DATABASE="$MYSQL_DATABASE" "$PHP_FPM_IMAGE"
         ;;
     esac
 }

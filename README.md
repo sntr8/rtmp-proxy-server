@@ -81,6 +81,7 @@ Port mapping: **48001-48010** for regular streams, **48101-48110** for proxy-onl
 - [Architecture](../../wiki/Architecture) - How the system works
 - [Configuration](../../wiki/Configuration) - Games, channels, tokens, ads
 - [Management Tools](../../wiki/Management-Tools) - Command reference
+- [Building Images](../../wiki/Building-Images) - Build and distribute Docker images
 - [Troubleshooting](../../wiki/Troubleshooting) - Common issues and solutions
 - [FAQ](../../wiki/FAQ) - Frequently asked questions
 

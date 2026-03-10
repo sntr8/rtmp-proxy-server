@@ -25,6 +25,7 @@ A Docker-based streaming proxy that sits between streamers and Twitch, providing
 ### Configuration & Management
 - **[Configuration](Configuration)** - Set up games, channels, tokens, and advertisements
 - **[Management Tools](Management-Tools)** - Complete reference for all CLI tools
+- **[Building Images](Building-Images)** - Build and distribute Docker images
 
 ### Operations
 - **[Troubleshooting](Troubleshooting)** - Diagnose and fix common issues
