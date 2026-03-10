@@ -196,7 +196,9 @@ NOTES:
   - Internal users (internal_technical_user, vlc_viewer) are excluded from most operations
   - Active status is managed automatically by containermod when containers start/stop
 "
+        exit 0
     ;;
     *)
         echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+        exit 1
 esac

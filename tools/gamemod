@@ -142,7 +142,9 @@ NOTES:
   - Common games: PUBG (480s), CS:GO (120s), Rocket League (0s), Dota 2 (300s)
   - Delay affects container startup (requires internal_technical_user relay)
 "
+        exit 0
     ;;
     *)
         echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+        exit 1
 esac

@@ -284,9 +284,10 @@ NOTES:
   - Token validation happens automatically when containers start
   - Failed token refresh triggers Discord alerts to support group
 "
-
+        exit 0
     ;;
     *)
         echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+        exit 1
     ;;
 esac

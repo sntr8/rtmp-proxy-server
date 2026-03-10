@@ -217,5 +217,10 @@ NOTES:
   - Config changes are immediate after reload (no restart needed)
   - Port assignment comes from channels table in database
 "
+        exit 0
+    ;;
+    *)
+        echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+        exit 1
     ;;
 esac

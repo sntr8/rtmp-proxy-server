@@ -597,5 +597,6 @@ case $OPERATION in
     ;;
     *)
         echo "Option $OPERATION not recognised. Try '$(basename "$0") --help' for more information"
+        exit 1
     ;;
 esac
