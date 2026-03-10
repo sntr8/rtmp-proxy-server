@@ -90,11 +90,6 @@ export TWITCH_CLIENT_ID="your_twitch_client_id"
 export TWITCH_ACCESS_TOKEN="your_twitch_access_token"
 export TWITCH_REFRESH_TOKEN="your_twitch_refresh_token"
 
-# GitLab Container Registry (optional, for config backup)
-export GIT_USER="your_gitlab_username"
-export GIT_TOKEN="your_gitlab_personal_access_token"
-export CONFIG_BRANCH="master"
-
 # Discord Webhooks (optional, for notifications)
 export DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
 export DISCORD_SUPPORT_GROUP="discord_role_or_user_id"

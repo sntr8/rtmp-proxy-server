@@ -497,7 +497,7 @@ twitch_get_broadcaster_id() {
         TWITCH_ACCESS_TOKEN=$(db_get_channel_access_token $CHANNEL)
         TWITCH_CLIENT_ID=$(db_get_channel_client_id $CHANNEL)
 
-        curl -s -X GET "https://api.twitch.tv/helix/search/channels?query=kanaliiga" -H "Authorization: Bearer $TWITCH_ACCESS_TOKEN" -H "Client-Id: $TWITCH_CLIENT_ID" |jq -r ".data[] | select(.broadcaster_login==\"$CHANNEL_LOGIN_NAME\").id"
+        curl -s -X GET "https://api.twitch.tv/helix/search/channels?query=$CHANNEL_LOGIN_NAME" -H "Authorization: Bearer $TWITCH_ACCESS_TOKEN" -H "Client-Id: $TWITCH_CLIENT_ID" |jq -r ".data[] | select(.broadcaster_login==\"$CHANNEL_LOGIN_NAME\").id"
     else
         echo "Twitch access key is not valid"
         return 1

@@ -30,6 +30,11 @@ COPY config/rsyslog.conf /etc/rsyslog.d/
 COPY plugins/acme-http01.lua /opt/plugins/acme-http01.lua
 COPY scripts/certbot.cron /etc/cron.d/certbot
 
+# Store config templates for extraction
+RUN mkdir -p /usr/local/etc/haproxy/templates
+COPY config/haproxy.cfg /usr/local/etc/haproxy/templates/haproxy.cfg
+COPY config/haproxy-rtmp.cfg /usr/local/etc/haproxy/templates/haproxy-rtmp.cfg
+
 EXPOSE 80 443 8404 48001-48010 48101-48110
 
 ENTRYPOINT [ "/docker-entrypoint.sh" ]

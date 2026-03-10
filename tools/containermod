@@ -180,41 +180,33 @@ run_container() {
 
             pull_container "$CONTAINER"
 
-            if [ -f /opt/haproxy/haproxy.cfg ];
-            then
-                rm /opt/haproxy/haproxy.cfg
-            fi
+            mkdir -p /opt/haproxy
 
-            SESSION_ID=$(od -x /dev/urandom | head -1 | awk '{OFS="-"; print $2$3,$4,$5,$6,$7$8$9}')
-            mkdir -p /tmp/"$SESSION_ID"/
-            GIT_OPTS=""
-            if [ ! -z "$CONFIG_BRANCH" ];
-            then
-                GIT_OPTS="-b $CONFIG_BRANCH"
-            fi
-            git clone $GIT_OPTS https://$GIT_USER:$GIT_TOKEN@gitlab.com/kanaliiga/stream-rtmp.git /tmp/"$SESSION_ID"/
-            if [ -f "/tmp/"$SESSION_ID"/haproxy/config/haproxy.cfg" ];
-            then
-                cp /tmp/"$SESSION_ID"/haproxy/config/haproxy.cfg /opt/haproxy/haproxy.cfg
-                rm -rf /tmp/"$SESSION_ID"
+            HAPROXY_IMAGE=$(get_image_name "haproxy" "$HAPROXY_VERSION")
 
-                HAPROXY_IMAGE=$(get_image_name "haproxy" "$HAPROXY_VERSION")
-                docker run --rm --net stream --name haproxy -d \
-                -e FQDN="$FQDN" \
-                -e ADMIN_EMAIL="$ADMIN_EMAIL" \
-                -v /opt/haproxy/:/usr/local/etc/haproxy/ \
-                -v /opt/letsencrypt/:/etc/letsencrypt/ \
-                -p 80:80 \
-                -p 443:443 \
-                -p 8084:8084 \
-                -p 48001-48010:48001-48010 \
-                -p 48101-48110:48101-48110 \
-                --sysctl net.ipv4.ip_unprivileged_port_start=0 \
-                "$HAPROXY_IMAGE"
-            else
-                echo "Git clone failed"
+            echo "Extracting fresh HAProxy config from image..."
+            docker run --rm "$HAPROXY_IMAGE" cat /usr/local/etc/haproxy/templates/haproxy.cfg > /opt/haproxy/haproxy.cfg
+
+            if [ $? -ne 0 ] || [ ! -s /opt/haproxy/haproxy.cfg ];
+            then
+                echo "ERROR: Failed to extract HAProxy config from image"
                 exit 1
             fi
+
+            echo "HAProxy config extracted"
+
+            docker run --rm --net stream --name haproxy -d \
+            -e FQDN="$FQDN" \
+            -e ADMIN_EMAIL="$ADMIN_EMAIL" \
+            -v /opt/haproxy/:/usr/local/etc/haproxy/ \
+            -v /opt/letsencrypt/:/etc/letsencrypt/ \
+            -p 80:80 \
+            -p 443:443 \
+            -p 8084:8084 \
+            -p 48001-48010:48001-48010 \
+            -p 48101-48110:48101-48110 \
+            --sysctl net.ipv4.ip_unprivileged_port_start=0 \
+            "$HAPROXY_IMAGE"
         ;;
         "mysql")
             if ! check_running "$CONTAINER";

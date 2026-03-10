@@ -48,36 +48,45 @@ case $OPERATION in
 
         PORT=$(db_get_channel_port $CHANNEL)
 
-
         add_lock $HAPROXY_CFG_DIR
 
+        # Extract RTMP config template from running haproxy container
         mkdir -p /tmp/$SESSION_ID/
-        cd /tmp/$SESSION_ID/
-        GIT_OPTS=""
-        if [ ! -z "$CONFIG_BRANCH" ];
+        CONTAINER_ID=$(docker ps -aqf "name=haproxy")
+
+        if [ -z "$CONTAINER_ID" ];
         then
-            GIT_OPTS="-b $CONFIG_BRANCH"
-        fi
-        git clone $GIT_OPTS https://$GIT_USER:$GIT_TOKEN@gitlab.com/kanaliiga/stream-rtmp.git .
-        if [ -f "haproxy/config/haproxy-rtmp.cfg" ];
-        then
-            sed -i "s/<CHANNEL>/$CHANNEL/g" haproxy/config/haproxy-rtmp.cfg
-            sed -i "s/<CASTER>/$CASTER/g" haproxy/config/haproxy-rtmp.cfg
-            sed -i "s/<PORT>/$PORT/g" haproxy/config/haproxy-rtmp.cfg
-
-            echo "# ::$CASTER::start" >> $HAPROXY_CFG_DIR/haproxy.cfg
-            cat haproxy/config/haproxy-rtmp.cfg >> $HAPROXY_CFG_DIR/haproxy.cfg
-            echo "# ::$CASTER::end" >> $HAPROXY_CFG_DIR/haproxy.cfg
-
             remove_lock $HAPROXY_CFG_DIR
-
-            reload_haproxy
-        else
-            remove_lock $HAPROXY_CFG_DIR
-            echo "Git clone failed. Can't configure HAproxy."
+            echo "ERROR: HAProxy container is not running. Start it first."
             exit 1
         fi
+
+        echo "Extracting RTMP config template from haproxy container..."
+        docker exec "$CONTAINER_ID" cat /usr/local/etc/haproxy/templates/haproxy-rtmp.cfg > /tmp/$SESSION_ID/haproxy-rtmp.cfg
+
+        if [ $? -ne 0 ] || [ ! -s /tmp/$SESSION_ID/haproxy-rtmp.cfg ];
+        then
+            remove_lock $HAPROXY_CFG_DIR
+            echo "ERROR: Failed to extract RTMP template from container"
+            rm -rf /tmp/$SESSION_ID/
+            exit 1
+        fi
+
+        # Replace placeholders in template
+        sed -i "s/<CHANNEL>/$CHANNEL/g" /tmp/$SESSION_ID/haproxy-rtmp.cfg
+        sed -i "s/<CASTER>/$CASTER/g" /tmp/$SESSION_ID/haproxy-rtmp.cfg
+        sed -i "s/<PORT>/$PORT/g" /tmp/$SESSION_ID/haproxy-rtmp.cfg
+
+        # Append to main config
+        echo "# ::$CASTER::start" >> $HAPROXY_CFG_DIR/haproxy.cfg
+        cat /tmp/$SESSION_ID/haproxy-rtmp.cfg >> $HAPROXY_CFG_DIR/haproxy.cfg
+        echo "# ::$CASTER::end" >> $HAPROXY_CFG_DIR/haproxy.cfg
+
         rm -rf /tmp/$SESSION_ID/
+
+        remove_lock $HAPROXY_CFG_DIR
+
+        reload_haproxy
 
     ;;
     "--remove")
@@ -152,7 +161,7 @@ OPERATIONS:
 CONFIGURATION DETAILS:
 
   Template Location:
-    haproxy/config/haproxy-rtmp.cfg in Git repository
+    /usr/local/etc/haproxy/templates/haproxy-rtmp.cfg (inside haproxy container)
 
   Generated Config Example:
     # ::JohnDoe::start
