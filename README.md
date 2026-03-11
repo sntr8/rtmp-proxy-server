@@ -41,7 +41,7 @@ source /etc/profile.d/stream.sh
 
 # 3. Build images
 cd tools
-./build_all_images.sh v1.6
+./build_all_images.sh v1.6 "--build-arg TZ=Europe/Helsinki"  # Set your timezone
 
 # 4. Start database (auto-initializes on first run)
 ./containermod --start --name mysql

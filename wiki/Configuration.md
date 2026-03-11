@@ -253,7 +253,9 @@ Follow the interactive prompts:
 **Important:**
 - Containers automatically start **30 minutes before** scheduled time
 - Containers automatically stop **30 minutes after** scheduled time
-- Times are in server local time
+- Times are interpreted in **MySQL container timezone** (set during image build with `--build-arg TZ=<timezone>`)
+  - If MySQL timezone doesn't match your server, scheduling will be confusing
+  - Example: MySQL in UTC, server in UTC+2 → scheduling "19:30" starts at 21:30 local time
 
 ### Managing Streams
 
@@ -534,9 +536,14 @@ cp /etc/profile.d/stream.sh stream.sh.backup
 ### Viewing Logs
 
 ```bash
+# Container logs (includes nginx and FFmpeg output)
 docker logs haproxy
 docker logs nginx-rtmp-JohnDoe
-docker exec nginx-rtmp-JohnDoe tail -f /opt/nginx/logs/ffmpeg-twitch.log
+docker logs -f nginx-rtmp-JohnDoe  # Follow mode
+
+# Check specific log files inside container (if needed)
+docker exec nginx-rtmp-JohnDoe ls -la /opt/nginx/logs/
+docker exec nginx-rtmp-JohnDoe tail -f /opt/nginx/logs/error.log
 ```
 
 For MySQL tuning, custom FFmpeg parameters, see [Architecture](Architecture).

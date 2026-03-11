@@ -63,13 +63,13 @@ docker system df
 - Access logs: Stdout (visible in `docker logs`)
 
 **nginx-rtmp:**
-- Error log: `/opt/nginx/logs/error.log` (in container)
-- Access log: `/opt/nginx/logs/access.log`
-- FFmpeg log: `/opt/nginx/logs/ffmpeg.log` (delay mode only)
+- All logs forwarded to `docker logs nginx-rtmp-<caster>`
+- Includes: nginx errors, FFmpeg output
+- Log files in container: `/opt/nginx/logs/error.log`, `/opt/nginx/logs/ffmpeg*.log`
 
 ```bash
+docker logs -f nginx-rtmp-JohnDoe
 docker exec nginx-rtmp-JohnDoe tail -f /opt/nginx/logs/error.log
-docker exec nginx-rtmp-JohnDoe tail -f /opt/nginx/logs/ffmpeg.log
 ```
 
 **nginx-http:**

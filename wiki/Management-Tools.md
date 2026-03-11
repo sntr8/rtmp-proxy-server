@@ -116,6 +116,8 @@ Manage streamers (casters).
 
 Schedule and manage streams.
 
+**Note:** Times are interpreted in MySQL container timezone. Ensure MySQL timezone matches your server (set with `--build-arg TZ=` during image build).
+
 ```bash
 # Schedule streams
 ./streammod --add              # Interactive, regular stream

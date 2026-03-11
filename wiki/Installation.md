@@ -65,7 +65,7 @@ echo 'Defaults env_keep += "FQDN MYSQL_* HAPROXY_VERSION MYSQL_VERSION NGINX_HTT
 
 # Build and deploy
 cd tools
-./build_all_images.sh v1.6
+./build_all_images.sh v1.6 "--build-arg TZ=Europe/Helsinki"  # Use your timezone
 ./containermod --start --name mysql
 ./containermod --start --all
 
@@ -152,16 +152,27 @@ The system uses custom Docker images for each component.
 
 ```bash
 cd tools
-./build_all_images.sh v1.6
 
-# Optional: Set custom timezone (defaults to UTC)
+# Build with your server's timezone (highly recommended)
 ./build_all_images.sh v1.6 "--build-arg TZ=Europe/Helsinki"
+
+# Or build with default UTC
+./build_all_images.sh v1.6
 ```
 
 **What this does:**
 - Builds images for haproxy, mysql, nginx-http, nginx-rtmp, php-fpm
 - Tags images with version number
 - Pushes to your container registry (GitLab by default)
+
+**Timezone Configuration:**
+- **Highly recommended:** Set `TZ` to match your server's timezone
+- Without setting `TZ`, containers default to **UTC**
+- If MySQL uses UTC and your server uses local time (e.g., `Europe/Helsinki`), scheduling streams becomes confusing:
+  - Scheduling a stream for "19:30" will be interpreted as 19:30 UTC
+  - If your timezone is UTC+2, the stream starts at 21:30 local time (2 hours late!)
+- **To check your server timezone:** `timedatectl` or `date +%Z`
+- Common timezones: `Europe/Helsinki`, `America/New_York`, `Asia/Tokyo`, `UTC`
 
 **Notes:**
 - If not using GitLab registry, edit `build_all_images.sh` to change the registry URL
