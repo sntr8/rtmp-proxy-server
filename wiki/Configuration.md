@@ -238,10 +238,17 @@ cd tools
 
 Follow the interactive prompts:
 - **Caster**: Select from list
+- **Co-caster**: Optional, for dual-stream setups
 - **Broadcast**: Select from list
 - **Game**: Select from list
+- **Twitch title**: Stream title
 - **Start time**: Format `DD.MM.YYYY HH:MM` (EU) or `MM/DD/YYYY HH:MM` (US)
 - **End time**: Same format
+
+**Add proxy-only stream** (no platform output, internal relay only):
+```bash
+./streammod --add-proxy
+```
 
 **Important:**
 - Containers automatically start **30 minutes before** scheduled time
@@ -251,11 +258,61 @@ Follow the interactive prompts:
 ### Managing Streams
 
 ```bash
-./streammod --upcoming   # View future streams
-./streammod --live       # View currently active
-./streammod --list       # View all streams
-./streammod --remove <stream_id>  # Cancel a stream
+# View streams
+./streammod --upcoming          # Future streams
+./streammod --live              # Currently active
+./streammod --ending            # Ending soon (within 30 min)
+
+# Modify streams
+./streammod --update <id>       # Update stream details
+./streammod --extend <id>       # Extend end time by 30 minutes
+./streammod --skip <id>         # Skip (don't auto-start)
+./streammod --unskip <id>       # Re-enable auto-start
+./streammod --delete <id>       # Delete from database
 ```
+
+## Container Management
+
+Manually start/stop containers for testing or manual streaming.
+
+### Base Containers
+
+```bash
+cd tools
+
+# Start/stop all base containers (mysql, haproxy, nginx-http, php-fpm)
+./containermod --start --all
+./containermod --stop --all
+./containermod --restart --all
+
+# Individual containers
+./containermod --start --name <container>
+./containermod --stop --name <container>
+./containermod --restart --name <container>
+
+# List running containers
+./containermod --list
+```
+
+**Container names:** `mysql`, `haproxy`, `nginx-http`, `php-fpm`
+
+### Stream Containers
+
+```bash
+# Start a stream container
+./containermod --start --name nginx-rtmp --caster JohnDoe --broadcast main-show --game csgo
+
+# Start a proxy container (internal relay only)
+./containermod --start --name nginx-rtmp --caster JohnDoe --broadcast johndoe-proxy --proxy
+
+# Stop a stream container
+./containermod --stop --name nginx-rtmp --caster JohnDoe
+
+# Stop a proxy container
+./containermod --stop --name nginx-rtmp --caster JohnDoe --proxy
+```
+
+**Note:** Stream containers are normally managed automatically via `cron_worker.sh` based on scheduled streams.
 
 ## Testing Your Setup
 
@@ -417,14 +474,9 @@ source /etc/profile.d/stream.sh
 
 **Get webhook:** Discord → Server Settings → Integrations → Webhooks → Create
 
-**Events:** Stream start/stop, errors, token expiry
+**Automated events:** Stream start/stop, errors, token expiry (sent by `cron_worker.sh`)
 
-### Manual Send
-
-```bash
-cd tools
-./discordmod --send "Test message"
-```
+**Note:** Discord notifications use predefined templates. Custom messages require editing template files in `tools/discord/templates/`.
 
 ## HAProxy Configuration
 

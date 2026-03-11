@@ -92,9 +92,9 @@ The broadcast (port 48001) outputs to all linked channels (Twitch, Instagram, Yo
 - [Home](../../wiki/Home) - Overview and getting started
 - [Installation](../../wiki/Installation) - Install base containers
 - [Configuration](../../wiki/Configuration) - Set up channels, broadcasts, casters, and streams
+- [Management Tools](../../wiki/Management-Tools) - Command syntax quick reference
 - [Ansible Deployment](../../wiki/Ansible-Deployment) - Automated deployment
 - [Architecture](../../wiki/Architecture) - How the system works
-- [Management Tools](../../wiki/Management-Tools) - Command reference
 - [Building Images](../../wiki/Building-Images) - Build and distribute Docker images
 - [Troubleshooting](../../wiki/Troubleshooting) - Common issues and solutions
 - [FAQ](../../wiki/FAQ) - Frequently asked questions

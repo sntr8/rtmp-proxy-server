@@ -1,335 +1,253 @@
-# Management Tools Reference
+# Management Tools Quick Reference
 
-Command syntax reference for all tools in `tools/` directory. For concepts and how things work, see [Architecture](Architecture).
+Command syntax cheat sheet for all tools in `tools/` directory. For detailed explanations and workflows, see [Configuration Guide](Configuration).
 
 ## Table of Contents
 
-- [containermod](#containermod) - Container lifecycle management
-- [streammod](#streammod) - Stream scheduling
-- [broadcastmod](#broadcastmod) - Broadcast management
-- [channelmod](#channelmod) - Channel (platform) management
-- [castermod](#castermod) - Caster management
-- [gamemod](#gamemod) - Game configuration
+- [channelmod](#channelmod) - Platform channels
+- [broadcastmod](#broadcastmod) - RTMP ingress points
+- [gamemod](#gamemod) - Games with delays
+- [castermod](#castermod) - Streamers
+- [streammod](#streammod) - Schedule streams
+- [containermod](#containermod) - Container lifecycle
 - [haproxy_configmod](#haproxy_configmod) - HAProxy routing
 - [discordmod](#discordmod) - Discord notifications
-- [cron_worker.sh](#cron_workersh) - Automation worker
-
----
-
-## containermod
-
-Manage Docker container lifecycle. See [Architecture - Container Architecture](Architecture#container-architecture).
-
-### Syntax
-
-```bash
-cd tools
-
-# Start/stop/restart base infrastructure
-./containermod --start|--stop|--restart --all
-./containermod --start|--stop|--restart --name <container>
-
-# Start stream container
-./containermod --start --name nginx-rtmp --caster <nick> --broadcast <broadcast> --game <game>
-
-# Stop stream container
-./containermod --stop --name nginx-rtmp --caster <nick>
-
-# List containers
-./containermod --list
-```
-
-### Examples
-
-```bash
-./containermod --start --all                                                      # Start infrastructure
-./containermod --start --name nginx-rtmp --caster JohnDoe --broadcast main-show --game csgo  # Start stream
-./containermod --stop --name nginx-rtmp --caster JohnDoe                          # Stop stream
-./containermod --restart --name haproxy                                           # Restart HAProxy
-```
-
-**Container types:** haproxy, mysql, nginx-http, php-fpm, nginx-rtmp, nginx-rtmp-proxy
-
----
-
-## streammod
-
-Schedule streams. See [Configuration - Broadcasts](Configuration#broadcasts-configuration).
-
-### Syntax
-
-```bash
-cd tools
-
-# Add (interactive)
-./streammod --add
-
-# List
-./streammod --upcoming|--live|--past|--all
-
-# Modify
-./streammod --extend <stream_id>       # +1 hour
-./streammod --cancel <stream_id>
-./streammod --update <stream_id> --start|--end "DD.MM.YYYY HH:MM"
-```
-
-### Examples
-
-```bash
-./streammod --add                   # Interactive: select caster, broadcast, game, times
-./streammod --upcoming              # List upcoming
-./streammod --extend 15             # Extend stream 15 by 1 hour
-./streammod --cancel 15             # Cancel stream 15
-```
-
-**Date formats:** `DD.MM.YYYY HH:MM` or `MM/DD/YYYY HH:MM` (server timezone)
-
-**Container timing:** Starts 30 min before, stops 30 min after scheduled times
-
----
-
-## broadcastmod
-
-Manage broadcasts (RTMP ingress points). See [Architecture - Broadcasts](Architecture#many-to-many-broadcast-architecture).
-
-### Syntax
-
-```bash
-cd tools
-
-./broadcastmod --create <name> <port> [display_name]
-./broadcastmod --list [broadcast]
-./broadcastmod --link <broadcast> <channel> [priority]
-./broadcastmod --unlink <broadcast> <channel>
-./broadcastmod --enable|--disable <broadcast> <channel>
-./broadcastmod --set <broadcast> <key> <value>
-./broadcastmod --remove <broadcast>
-```
-
-### Examples
-
-```bash
-./broadcastmod --create main-show 48001 "Main Show"
-./broadcastmod --link main-show my_twitch 1
-./broadcastmod --link main-show my_instagram 2
-./broadcastmod --list main-show                      # Show with linked channels
-./broadcastmod --disable main-show my_instagram      # Temp disable (no unlink)
-./broadcastmod --enable main-show my_instagram       # Re-enable
-./broadcastmod --unlink main-show my_youtube         # Permanent unlink
-./broadcastmod --set main-show display_name "New Name"
-./broadcastmod --remove main-show
-```
-
-**Port ranges:** Regular 48001-48010, Proxy 48101-48110
+- [cron_worker.sh](#cron_workersh) - Automation
 
 ---
 
 ## channelmod
 
-Manage platform channels. See [Architecture - Channels](Architecture#many-to-many-broadcast-architecture) and [Configuration - Channels](Configuration#channels-configuration).
-
-### Syntax
+Manage platform channels (Twitch, Instagram, YouTube, Facebook).
 
 ```bash
-cd tools
-
+# Create channels
 ./channelmod --create <name> <platform> <stream_url> [stream_key]
-./channelmod --list
+./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
+./channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp <key>
+./channelmod --create my_youtube youtube rtmp://a.rtmp.youtube.com/live2
+./channelmod --create my_facebook facebook rtmps://live-api-s.facebook.com:443/rtmp <key>
+
+# Set credentials
 ./channelmod --set <channel> <field> <value>
+./channelmod --set my_twitch access_token "<token>"
+./channelmod --set my_twitch client_id "<client_id>"
+./channelmod --set my_twitch refresh_token "<refresh_token>"
+./channelmod --set my_youtube client_id "<client_id>"
+./channelmod --set my_youtube client_secret "<secret>"
+./channelmod --set my_youtube refresh_token "<refresh_token>"
+./channelmod --set my_instagram stream_key "<key>"
+
+# Manage
+./channelmod --list
 ./channelmod --remove <channel>
 ./channelmod --test-tokens <channel>
-./channelmod --refresh-tokens <channel>
 ./channelmod --auto-fetch-key <channel>
+./channelmod --refresh-tokens <channel>
 ```
 
-**Platforms:** `twitch`, `instagram`, `facebook`, `youtube`
+---
 
-**Fields:** `platform`, `stream_url`, `stream_key`, `display_name`, `access_token`, `client_id`, `client_secret`, `refresh_token`
+## broadcastmod
 
-### Examples
+Manage broadcasts (RTMP ingress points with ports).
 
 ```bash
-./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
-./channelmod --set my_twitch access_token "<your_access_token>"
-./channelmod --set my_twitch client_id "<your_client_id>"
-./channelmod --set my_twitch refresh_token "<your_refresh_token>"
-./channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp
-./channelmod --set my_instagram stream_key "<instagram_key>"
-./channelmod --list
-./channelmod --test-tokens my_twitch
-./channelmod --auto-fetch-key my_twitch
-./channelmod --refresh-tokens my_twitch
-./channelmod --remove my_instagram
+# Create and link
+./broadcastmod --create <name> <port> <display_name>
+./broadcastmod --create main-show 48001 "Main Show"
+./broadcastmod --link <broadcast> <channel> [priority]
+./broadcastmod --link main-show my_twitch 1
+./broadcastmod --link main-show my_instagram 2
+
+# Manage
+./broadcastmod --list
+./broadcastmod --list <broadcast>
+./broadcastmod --remove <broadcast>
+./broadcastmod --set <broadcast> display_name <name>
+
+# Enable/disable links
+./broadcastmod --unlink <broadcast> <channel>
+./broadcastmod --disable <broadcast> <channel>
+./broadcastmod --enable <broadcast> <channel>
+```
+
+---
+
+## gamemod
+
+Manage games with stream delays.
+
+```bash
+# Add games
+./gamemod --add <tech_name> <display_name> <abbr> <delay_seconds>
+./gamemod --add csgo "Counter-Strike: Global Offensive" "CS:GO" 480
+./gamemod --add lol "League of Legends" "LoL" 0
+
+# Interactive add
+./gamemod --add
+
+# Manage
+./gamemod --list
+./gamemod --list --ids
+./gamemod --remove <tech_name>
 ```
 
 ---
 
 ## castermod
 
-Manage casters (streamers). See [Architecture - Authentication](Architecture#authentication-system).
-
-### Syntax
+Manage streamers (casters).
 
 ```bash
-cd tools
+# Add casters
+./castermod --add <nickname> [discord_id]
+./castermod --add JohnDoe 123456789012345678
 
-./castermod --add <nickname> <discord_id>
+# Manage
 ./castermod --list
-./castermod --info <nickname>
+./castermod --list --ids
 ./castermod --remove <nickname>
 ```
 
-### Examples
+---
+
+## streammod
+
+Schedule and manage streams.
 
 ```bash
-./castermod --add JohnDoe 123456789012345678   # Generates stream key
-./castermod --list
-./castermod --info JohnDoe                      # Show connection details
-./castermod --remove JohnDoe
+# Schedule streams
+./streammod --add              # Interactive, regular stream
+./streammod --add-proxy        # Interactive, proxy-only
+
+# View streams
+./streammod --upcoming         # Future streams
+./streammod --upcoming --ids   # IDs only
+./streammod --live             # Currently active
+./streammod --live --ids       # IDs only
+./streammod --ending           # Ending within 30 min
+
+# Modify streams
+./streammod --update <id>      # Edit details
+./streammod --extend <id>      # Extend by 30 min
+./streammod --skip <id>        # Don't auto-start
+./streammod --unskip <id>      # Re-enable auto-start
+./streammod --delete <id>      # Delete
 ```
-
-**Stream key format:** `<nickname>-<random12chars>` (auto-generated)
-
-**Note:** Don't delete `internal_technical_user` or `vlc_viewer` (system users)
 
 ---
 
-## gamemod
+## containermod
 
-Manage games. See [Architecture - Stream Delay](Architecture#stream-delay-implementation).
-
-### Syntax
+Manage Docker containers.
 
 ```bash
-cd tools
+# Base containers (mysql, haproxy, nginx-http, php-fpm)
+./containermod --start --all
+./containermod --stop --all
+./containermod --restart --all
+./containermod --start --name <container>
+./containermod --stop --name <container>
+./containermod --restart --name <container>
 
-./gamemod --add [<technical> <display_name> <abbreviation> <delay>]
-./gamemod --list
-./gamemod --remove <technical_name>
+# Stream containers
+./containermod --start --name nginx-rtmp --caster <nick> --broadcast <broadcast> --game <game>
+./containermod --start --name nginx-rtmp --caster <nick> --broadcast <broadcast> --proxy
+./containermod --stop --name nginx-rtmp --caster <nick>
+./containermod --stop --name nginx-rtmp --caster <nick> --proxy
+
+# List
+./containermod --list
 ```
-
-### Examples
-
-```bash
-./gamemod --add csgo "Counter-Strike: Global Offensive" "CS:GO" 480
-./gamemod --add lol "League of Legends" "LoL" 0
-./gamemod --list
-./gamemod --remove csgo
-```
-
-**Delay:** 0 = instant, 480 = 8 minutes, 300 = 5 minutes
-
-**Note:** Display name must match Twitch category exactly
 
 ---
 
 ## haproxy_configmod
 
-Manage HAProxy routing (usually automatic). See [Architecture - HAProxy](Architecture#haproxy-configuration-structure).
-
-### Syntax
+Manage HAProxy routing (usually automatic).
 
 ```bash
-cd tools
-
 ./haproxy_configmod --add --caster <nickname> --port <port>
 ./haproxy_configmod --remove --caster <nickname>
 ./haproxy_configmod --reload
 ```
 
-### Examples
-
-```bash
-./haproxy_configmod --add --caster JohnDoe --port 48001
-./haproxy_configmod --remove --caster JohnDoe
-./haproxy_configmod --reload   # Graceful reload
-```
-
-**Note:** Usually called automatically by `containermod`
+**Note:** Called automatically by `containermod`.
 
 ---
 
 ## discordmod
 
-Send Discord notifications. See [Configuration - Discord Notifications](Configuration#discord-notifications).
+Discord notifications (template-based, called by `cron_worker.sh`).
 
-### Syntax
+**Templates:** `tools/discord/templates/`
 
-```bash
-cd tools
+**Events:**
+- `startup` / `startup_cc` - Stream started
+- `shutdown` / `shutdown_cc` - Stream stopped
+- `shutdown-warning` / `shutdown-warning_cc` - Stream ending soon
+- `startup-failed` / `startup-failed_cc` - Container start failed
+- `shutdown-failed` / `shutdown-failed_cc` - Container stop failed
+- `token-refresh-failed` - Token refresh failed
+- `tokens-invalid` - Invalid tokens detected
 
-./discordmod --send "<message>" [--mention]
-```
-
-### Examples
-
-```bash
-./discordmod --send "Stream is starting!"
-./discordmod --send "Error starting container" --mention   # Mentions $DISCORD_SUPPORT_GROUP
-```
-
-**Configuration:** Set `$DISCORD_WEBHOOK` and optionally `$DISCORD_SUPPORT_GROUP` in `/etc/profile.d/stream.sh`
+**Configuration:** Set `DISCORD_WEBHOOK` and `DISCORD_SUPPORT_GROUP` in `/etc/profile.d/stream.sh`
 
 ---
 
 ## cron_worker.sh
 
-Automation worker for scheduled streams. Starts containers 30 min before, stops 30 min after.
+Automation worker for scheduled streams.
 
-### Usage
-
-Automatic (via cron):
-```cron
-*/5 * * * * source /etc/profile.d/stream.sh && /path/to/tools/cron_worker.sh >> /var/log/stream-cron.log 2>&1
-```
-
-Manual (testing):
+**Setup:**
 ```bash
-cd tools
-./cron_worker.sh
+sudo crontab -e
+```
+```cron
+*/5 * * * * source /etc/profile.d/stream.sh && /opt/rtmp-proxy-server/tools/cron_worker.sh >> /var/log/stream-cron.log 2>&1
 ```
 
-### Behavior
+**Behavior:**
+- Starts containers 30 min before scheduled time
+- Stops containers 30 min after scheduled time
+- Sends Discord notifications
 
-Stream scheduled 18:00-22:00:
-- 17:30: Container starts, notification sent
-- 22:30: Container stops, notification sent
-
-**Logs:** `tail -f /var/log/stream-cron.log`
+**Logs:**
+```bash
+tail -f /var/log/stream-cron.log
+```
 
 ---
 
-## Common Workflows
+## Quick Workflows
 
-See [Configuration Guide](Configuration) for complete setup instructions.
-
-### Quick Setup
-
+### Set up a new channel and broadcast
 ```bash
-cd tools
-./gamemod --add csgo "Counter-Strike: Global Offensive" "CS:GO" 480
 ./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
+./channelmod --set my_twitch access_token "<token>"
+./channelmod --set my_twitch client_id "<id>"
+./channelmod --set my_twitch refresh_token "<refresh>"
 ./broadcastmod --create main-show 48001 "Main Show"
 ./broadcastmod --link main-show my_twitch
+```
+
+### Schedule a stream
+```bash
+./gamemod --add csgo "Counter-Strike: Global Offensive" "CS:GO" 480
 ./castermod --add JohnDoe 123456789012345678
-./streammod --add  # Interactive: select JohnDoe, main-show, csgo, times
-./streammod --upcoming
+./streammod --add
 ```
 
-### Emergency Stop
-
+### Manual test stream
 ```bash
+./containermod --start --name nginx-rtmp --caster JohnDoe --broadcast main-show --game csgo
+# Stream to: rtmp://stream.yourdomain.com:48001/JohnDoe/
 ./containermod --stop --name nginx-rtmp --caster JohnDoe
-docker stop $(docker ps -q --filter "name=nginx-rtmp-")  # Stop all
-```
-
-### Database Access
-
-```bash
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "SELECT * FROM streams"
-docker exec -it mysql mysql --defaults-extra-file=/creds.cnf stream
 ```
 
 ---
+
+For detailed explanations, see [Configuration Guide](Configuration).
 
 [Back to Wiki Home](Home)
