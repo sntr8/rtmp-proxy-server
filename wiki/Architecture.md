@@ -178,7 +178,6 @@ These containers run continuously and provide core services:
 - **Responsibilities:**
   - Routes RTMP traffic to nginx-rtmp containers based on destination port
   - Provides HTTPS with Let's Encrypt SSL certificates
-  - Exposes HAProxy stats dashboard (port 8404)
   - Supports graceful reloads (no stream interruption)
 - **Configuration:** `/opt/haproxy/haproxy.cfg`
 - **Dynamic updates:** Managed by `haproxy_configmod` script
@@ -279,13 +278,6 @@ defaults
     timeout connect 5s
     timeout client 300s
     timeout server 300s
-
-# Statistics dashboard
-listen stats
-    bind *:8404
-    mode http
-    stats enable
-    stats uri /stats
 
 # HTTPS frontend (for nginx-http)
 frontend https-in
@@ -490,7 +482,6 @@ Only HAProxy is exposed to external network:
 ```
 Internet → HAProxy:48001-48110 (RTMP)
 Internet → HAProxy:443 (HTTPS)
-Internet → HAProxy:8404 (stats, optional)
 ```
 
 All other containers are isolated on internal network.
@@ -564,7 +555,7 @@ Traefik also operates at Layer 4 for TCP routing and has same limitation as HAPr
 
 Key areas to monitor:
 
-1. **HAProxy:** Connection counts, backend status (`http://server:8404/stats`)
+1. **HAProxy:** Check logs for connection status and backend health
 2. **nginx-rtmp containers:** FFmpeg process status, log errors
 3. **MySQL:** Connection count, slow queries
 4. **Disk space:** `/opt/rtmp/workdir` for delay recordings

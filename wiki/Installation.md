@@ -19,7 +19,6 @@ Complete step-by-step guide for installing RTMP Proxy Server from scratch.
   - Port 443 (HTTPS - Web interface)
   - Ports 48001-48010 (RTMP stream channels)
   - Ports 48101-48110 (RTMP proxy channels)
-  - Optional: Port 8404 (HAProxy stats dashboard)
 
 ### Streaming Platform Requirements
 
@@ -291,11 +290,6 @@ docker ps
 
 You should see: `haproxy`, `nginx-http`, `php-fpm`, `mysql`.
 
-**Check HAProxy stats:**
-```
-https://stream.yourdomain.com:8404/stats
-```
-
 ### Step 8: Add Streamers (Casters)
 
 Add each streamer who will use the system:
@@ -445,20 +439,7 @@ cd tools
 
 Ads are served at: `https://stream.yourdomain.com/ads/?game=csgo`
 
-### Configure Let's Encrypt Auto-Renewal
-
-Let's Encrypt certificates expire after 90 days. Add auto-renewal:
-
-```bash
-sudo crontab -e
-```
-
-Add:
-```cron
-0 3 * * * docker exec haproxy /usr/local/bin/certbot renew --quiet
-```
-
-This checks daily at 3 AM and renews if needed (certificates renew when <30 days remain).
+**Note:** Let's Encrypt certificates are automatically renewed by the HAProxy container (checks every 12 hours).
 
 ## Upgrading
 
@@ -485,87 +466,9 @@ export NGINX_RTMP_VERSION="v1.7"
 cd tools
 ./build_all_images.sh v1.7
 
-# Restart containers (one at a time to minimize downtime)
-./containermod --restart --name haproxy
-./containermod --restart --name nginx-http
-./containermod --restart --name php-fpm
-# MySQL restart requires caution - ensure no active streams
+# Restart all containers (ensure no active streams first)
+./containermod --restart --all
 ```
-
-## Troubleshooting Installation
-
-### MySQL Won't Start
-
-**Error:** `Can't connect to MySQL server`
-
-**Solution:**
-```bash
-# Check logs
-docker logs mysql
-
-# Common issues:
-# - Wrong root password in environment
-# - Port 3306 already in use
-# - Insufficient memory
-
-# Restart with logs
-docker stop mysql
-docker rm mysql
-./containermod --start --name mysql
-docker logs -f mysql
-```
-
-### HAProxy SSL Errors
-
-**Error:** Let's Encrypt validation fails
-
-**Solution:**
-```bash
-# Ensure ports 80 and 443 are open in firewall
-# Ensure DNS points to server IP
-# Check HAProxy logs
-docker logs haproxy
-
-# Manual certificate request
-docker exec -it haproxy /usr/local/bin/certbot certonly --standalone -d stream.yourdomain.com
-```
-
-### Build Script Fails
-
-**Error:** Docker build fails or push fails
-
-**Solution:**
-```bash
-# Check Docker is running
-sudo systemctl status docker
-
-# Check registry credentials
-docker login registry.gitlab.com
-
-# Build individual container for debugging
-cd haproxy
-docker build -t haproxy:test .
-```
-
-### Container Won't Start
-
-**Error:** `containermod --start` fails
-
-**Solution:**
-```bash
-# Check environment variables are loaded
-echo $FQDN
-echo $MYSQL_ROOT_PASSWORD
-
-# Check Docker network
-docker network ls
-
-# Try starting manually
-docker run -d --name test-container image-name
-docker logs test-container
-```
-
-For more troubleshooting, see [Troubleshooting Guide](Troubleshooting).
 
 ## Next Steps
 

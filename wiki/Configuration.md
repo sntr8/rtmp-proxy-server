@@ -367,12 +367,12 @@ docker exec haproxy killall -HUP haproxy  # Graceful reload
 
 ### SSL Certificates
 
-```bash
-# Manual renewal
-docker exec haproxy /usr/local/bin/certbot renew
+Certificates are automatically renewed by the HAProxy container (checks every 12 hours).
 
-# Auto-renewal (crontab)
-0 3 * * * docker exec haproxy /usr/local/bin/certbot renew --quiet
+**Force fresh certificate (if renewal fails):**
+```bash
+sudo rm -rf /opt/letsencrypt/*
+docker restart haproxy
 ```
 
 ## Advanced Settings

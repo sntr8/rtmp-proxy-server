@@ -78,7 +78,7 @@ No, containers are isolated. Optional VLC viewer for internal watching.
 
 ### Should I change default passwords?
 
-Yes, immediately. Set MySQL root/user passwords in `/etc/profile.d/stream.sh`. Add HAProxy stats password. Never commit passwords to Git.
+Yes, immediately. Set MySQL root/user passwords in `/etc/profile.d/stream.sh`. Never commit passwords to Git.
 
 ## Operations & Maintenance
 

@@ -33,16 +33,6 @@ docker ps -a  # Show stopped containers
 docker logs <container_name>  # Check why it stopped
 ```
 
-**HAProxy stats dashboard:**
-```
-https://stream.yourdomain.com:8404/stats
-```
-
-Shows:
-- Frontend/backend status
-- Connection counts
-- Health checks
-
 **Check container logs:**
 ```bash
 # Follow logs in real-time
@@ -453,9 +443,6 @@ Solution: Stop conflicting service.
 ```bash
 # Check routing config
 docker exec haproxy cat /usr/local/etc/haproxy/haproxy.cfg | grep "::.*::"
-
-# Check backend status
-curl http://stream.yourdomain.com:8404/stats
 ```
 
 **Solutions:**
@@ -810,22 +797,21 @@ docker exec -it haproxy /usr/local/bin/certbot certonly --standalone -d stream.y
 
 **Symptom:** HTTPS connections fail with "certificate expired"
 
-**Solution:**
+**Note:** The HAProxy container automatically renews certificates every 12 hours. If expired, the automatic renewal may have failed.
 
-**Manual renewal:**
+**Solution - Force fresh certificate:**
 ```bash
-docker exec haproxy /usr/local/bin/certbot renew
+# Delete old certificates
+sudo rm -rf /opt/letsencrypt/*
+
+# Restart HAProxy (fetches new certificate automatically)
 docker restart haproxy
 ```
 
-**Check auto-renewal cron:**
+**Check certificate provisioning:**
 ```bash
-sudo crontab -l | grep certbot
-```
-
-Should have:
-```cron
-0 3 * * * docker exec haproxy /usr/local/bin/certbot renew --quiet
+docker logs -f haproxy
+# Watch for certbot messages during startup
 ```
 
 ---
