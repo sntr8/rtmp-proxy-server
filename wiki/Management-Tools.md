@@ -150,9 +150,9 @@ cd tools
 
 ```bash
 ./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
-./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
-./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
-./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
+./channelmod --set my_twitch access_token "<your_access_token>"
+./channelmod --set my_twitch client_id "<your_client_id>"
+./channelmod --set my_twitch refresh_token "<your_refresh_token>"
 ./channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp
 ./channelmod --set my_instagram stream_key "<instagram_key>"
 ./channelmod --list

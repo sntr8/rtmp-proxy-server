@@ -61,24 +61,20 @@ source /etc/profile.d/stream.sh
 
 # Make environment available everywhere
 echo '[ -f /etc/profile.d/stream.sh ] && . /etc/profile.d/stream.sh' | sudo tee -a /etc/bash.bashrc
-echo 'Defaults env_keep += "FQDN MYSQL_* TWITCH_* HAPROXY_VERSION MYSQL_VERSION NGINX_HTTP_VERSION NGINX_RTMP_VERSION PHP_FPM_VERSION DOCKER_USERNAME REGISTRY_URL DISCORD_*"' | sudo EDITOR='tee -a' visudo
+echo 'Defaults env_keep += "FQDN MYSQL_* HAPROXY_VERSION MYSQL_VERSION NGINX_HTTP_VERSION NGINX_RTMP_VERSION PHP_FPM_VERSION DOCKER_USERNAME REGISTRY_URL DISCORD_*"' | sudo EDITOR='tee -a' visudo
 
 # Build and deploy
 cd tools
 ./build_all_images.sh v1.6
 ./containermod --start --name mysql
-
-# Add channel, broadcast, and caster
-./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
-./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
-./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
-./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
-./broadcastmod --create main-show 48001 "Main Show"
-./broadcastmod --link main-show my_twitch
 ./containermod --start --all
-./castermod --add JohnDoe 123456789012345678
-./streammod --add
+
+# Set up automation
+sudo crontab -e
+# Add: */5 * * * * source /etc/profile.d/stream.sh && /opt/rtmp-proxy-server/tools/cron_worker.sh >> /var/log/stream-cron.log 2>&1
 ```
+
+**Next:** See [Configuration Guide](Configuration) to set up channels, broadcasts, casters, and streams.
 
 ## Detailed Installation
 
@@ -106,11 +102,6 @@ export MYSQL_ROOT_PASSWORD="your_very_secure_root_password"
 export MYSQL_USER="stream_user"
 export MYSQL_PASSWORD="your_secure_password"
 export MYSQL_DATABASE="stream"
-
-# Twitch API Credentials (from twitchtokengenerator.com)
-export TWITCH_CLIENT_ID="your_twitch_client_id"
-export TWITCH_ACCESS_TOKEN="your_twitch_access_token"
-export TWITCH_REFRESH_TOKEN="your_twitch_refresh_token"
 
 # Discord Webhooks (optional, for notifications)
 export DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
@@ -141,7 +132,7 @@ source /etc/profile.d/stream.sh
 echo '[ -f /etc/profile.d/stream.sh ] && . /etc/profile.d/stream.sh' >> /etc/bash.bashrc
 
 # Preserve environment with sudo
-echo 'Defaults env_keep += "FQDN MYSQL_* TWITCH_* HAPROXY_VERSION MYSQL_VERSION NGINX_HTTP_VERSION NGINX_RTMP_VERSION PHP_FPM_VERSION DOCKER_USERNAME REGISTRY_URL DISCORD_*"' | sudo EDITOR='tee -a' visudo
+echo 'Defaults env_keep += "FQDN MYSQL_* HAPROXY_VERSION MYSQL_VERSION NGINX_HTTP_VERSION NGINX_RTMP_VERSION PHP_FPM_VERSION DOCKER_USERNAME REGISTRY_URL DISCORD_*"' | sudo EDITOR='tee -a' visudo
 ```
 
 **Verify environment is loaded:**
@@ -192,85 +183,7 @@ docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "SHOW TABLES;"
 
 You should see: `broadcasts`, `broadcast_channels`, `casters`, `channels`, `games`, `streams`.
 
-### Step 5: Add Platform Channels
-
-Channels are reusable platform destinations (Twitch, Instagram, YouTube, Facebook). Create channels using `channelmod`.
-
-**Twitch (with API for auto-fetch):**
-```bash
-./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
-./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
-./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
-./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
-./channelmod --set my_twitch display_name "My Twitch Channel"
-```
-
-**Instagram (manual key only):**
-```bash
-./channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp
-./channelmod --set my_instagram stream_key "<instagram_stream_key>"
-./channelmod --set my_instagram display_name "My Instagram"
-```
-
-**YouTube (with API for auto-fetch):**
-```bash
-./channelmod --create my_youtube youtube rtmp://a.rtmp.youtube.com/live2
-./channelmod --set my_youtube client_id "$YOUTUBE_CLIENT_ID"
-./channelmod --set my_youtube client_secret "$YOUTUBE_CLIENT_SECRET"
-./channelmod --set my_youtube refresh_token "$YOUTUBE_REFRESH_TOKEN"
-./channelmod --set my_youtube display_name "My YouTube"
-```
-
-**Facebook (manual key only):**
-```bash
-./channelmod --create my_facebook facebook rtmps://live-api-s.facebook.com:443/rtmp
-./channelmod --set my_facebook stream_key "<facebook_stream_key>"
-./channelmod --set my_facebook display_name "My Facebook"
-```
-
-**View all channels:**
-```bash
-./channelmod --list
-```
-
-**Note:** Twitch and YouTube support API auto-fetch (keys fetched at container start). Instagram and Facebook require manual stream keys.
-
-### Step 6: Create Broadcasts and Link Channels
-
-Broadcasts are RTMP ingress points with ports (48001-48010). Link channels to broadcasts to create output streams.
-
-**Create a broadcast:**
-```bash
-./broadcastmod --create main-show 48001 "Main Show"
-```
-
-**Link channels to the broadcast:**
-```bash
-./broadcastmod --link main-show my_twitch
-./broadcastmod --link main-show my_instagram
-./broadcastmod --link main-show my_youtube
-```
-
-**Create additional broadcasts:**
-```bash
-./broadcastmod --create evening-cast 48002 "Evening Cast"
-./broadcastmod --link evening-cast my_twitch
-
-./broadcastmod --create tournament 48003 "Tournament"
-./broadcastmod --link tournament my_twitch
-./broadcastmod --link tournament my_facebook
-```
-
-**View all broadcasts:**
-```bash
-./broadcastmod --list
-```
-
-**Port Assignment:**
-- Main broadcasts: 48001-48010 (for normal streams)
-- Proxy broadcasts: 48101-48110 (for internal relay, pre-configured)
-
-### Step 7: Start Base Infrastructure
+### Step 5: Start Base Infrastructure
 
 Start all base containers (haproxy, nginx-http, php-fpm):
 ```bash
@@ -290,81 +203,7 @@ docker ps
 
 You should see: `haproxy`, `nginx-http`, `php-fpm`, `mysql`.
 
-### Step 8: Add Streamers (Casters)
-
-Add each streamer who will use the system:
-
-```bash
-./castermod --add JohnDoe 123456789012345678
-```
-
-Where:
-- `JohnDoe` is the streamer's nickname
-- `123456789012345678` is their Discord user ID (optional, for notifications)
-
-This will:
-- Create a database entry
-- Generate a unique stream key (e.g., `JohnDoe-abc123def456`)
-- Output the full RTMP connection details
-
-**View all casters:**
-```bash
-./castermod --list
-```
-
-### Step 9: Add Games
-
-Add games that will be streamed:
-
-```bash
-./gamemod --add
-```
-
-Follow the interactive prompts:
-- **Technical name**: Short identifier (e.g., `csgo`, `pubg`, `lol`)
-- **Display name**: Must match Twitch exactly (e.g., `Counter-Strike: Global Offensive`)
-- **Abbreviation**: Short form (e.g., `CS:GO`)
-- **Delay**: Seconds (0 for instant, 480 for 8 minutes)
-
-**Example games:**
-```bash
-# Counter-Strike with 8-minute delay
-./gamemod --add csgo "Counter-Strike: Global Offensive" "CS:GO" 480
-
-# League of Legends with no delay
-./gamemod --add lol "League of Legends" "LoL" 0
-
-# PUBG with 8-minute delay
-./gamemod --add pubg "PlayerUnknown's Battlegrounds" "PUBG" 480
-```
-
-### Step 10: Schedule Streams
-
-Schedule a stream:
-
-```bash
-./streammod --add
-```
-
-Follow the interactive prompts:
-- **Caster**: Select from list
-- **Channel**: Select from list (or use cocaster feature)
-- **Game**: Select from list
-- **Start time**: Format `DD.MM.YYYY HH:MM` (EU) or `MM/DD/YYYY HH:MM` (US)
-- **End time**: Same format
-
-**Important:**
-- Containers automatically start **30 minutes before** scheduled time
-- Containers automatically stop **30 minutes after** scheduled time
-- Times are in server local time
-
-**View scheduled streams:**
-```bash
-./streammod --upcoming   # Future streams
-./streammod --live       # Currently active
-```
-
-### Step 11: Set Up Automation
+### Step 6: Set Up Automation
 
 Add cron job to automatically manage containers based on schedules:
 
@@ -386,58 +225,6 @@ This runs every 5 minutes and:
 ```bash
 tail -f /var/log/stream-cron.log
 ```
-
-## Post-Installation
-
-### Test Streaming
-
-1. Start a test stream container:
-```bash
-cd tools
-./containermod --start --name nginx-rtmp --caster JohnDoe --broadcast main-show --game csgo
-```
-
-2. Configure OBS:
-   - **Server:** `rtmp://stream.yourdomain.com:48001/JohnDoe/`
-   - **Stream Key:** `JohnDoe-abc123def456` (get from castermod)
-
-3. Start streaming in OBS
-
-4. Check output on linked platform channels (Twitch, Instagram, etc.)
-
-5. Stop container:
-```bash
-./containermod --stop --name nginx-rtmp --caster JohnDoe
-```
-
-### Add Advertisements (Optional)
-
-Place advertisement images in `nginx-http/html/ads/img/`:
-
-```bash
-cd nginx-http/html/ads/img
-
-# Common ads (shown on all streams)
-mkdir -p common
-cp /path/to/ad1.png common/
-
-# Game-specific ads
-mkdir -p csgo pubg lol
-cp /path/to/csgo-sponsor.jpg csgo/
-cp /path/to/pubg-tournament.png pubg/
-```
-
-**Requirements:**
-- File format: `.png` or `.jpg` (lowercase extensions only)
-- Recommended size: 1920x1080 or 1280x720
-
-**Rebuild nginx-http** after adding ads:
-```bash
-cd tools
-./containermod --restart --name nginx-http
-```
-
-Ads are served at: `https://stream.yourdomain.com/ads/?game=csgo`
 
 ## Upgrading
 
@@ -470,10 +257,13 @@ cd tools
 
 ## Next Steps
 
-- Read [Architecture](Architecture) to understand how the system works
-- Review [Configuration](Configuration) for advanced settings
-- Check [Management Tools](Management-Tools) for all available commands
-- For any problems see [Troubleshooting](Troubleshooting)
+**Now configure your streaming setup:**
+- **[Configuration Guide](Configuration)** - Set up channels, broadcasts, casters, and streams
+
+**Additional resources:**
+- [Architecture](Architecture) - Understand how the system works
+- [Management Tools](Management-Tools) - All available commands
+- [Troubleshooting](Troubleshooting) - Common issues and solutions
 
 ---
 

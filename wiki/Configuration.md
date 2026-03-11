@@ -1,6 +1,6 @@
 # Configuration Guide
 
-Step-by-step guide for configuring RTMP Proxy Server. For technical details on how the system works, see [Architecture](Architecture).
+Complete setup guide after installing base containers. If you haven't installed yet, see [Installation Guide](Installation) first.
 
 ## Table of Contents
 
@@ -10,6 +10,9 @@ Step-by-step guide for configuring RTMP Proxy Server. For technical details on h
 - [Broadcasts Configuration](#broadcasts-configuration)
 - [Games Configuration](#games-configuration)
 - [Casters Configuration](#casters-configuration)
+- [Scheduling Streams](#scheduling-streams)
+- [Testing Your Setup](#testing-your-setup)
+- [OBS Settings](#obs-settings)
 - [Twitch API Tokens](#twitch-api-tokens)
 - [YouTube API Tokens](#youtube-api-tokens)
 - [Advertisements](#advertisements)
@@ -21,13 +24,14 @@ Step-by-step guide for configuring RTMP Proxy Server. For technical details on h
 
 The system uses a many-to-many model: **Channels** (platform destinations) ↔ **Broadcasts** (RTMP ingress points). See [Architecture - Many-to-Many Model](Architecture#many-to-many-broadcast-architecture) for details.
 
-**Basic workflow:**
-1. Create channels for your platforms → `channelmod --create`
+**Complete these steps to start streaming:**
+1. Create channels for your platforms → `channelmod`
 2. Create a broadcast with a port → `broadcastmod --create`
 3. Link channels to the broadcast → `broadcastmod --link`
 4. Add games → `gamemod --add`
 5. Add casters → `castermod --add`
 6. Schedule streams → `streammod --add`
+7. Test your setup
 
 ## Platform Configuration
 
@@ -52,18 +56,6 @@ YouTube:   rtmp://a.rtmp.youtube.com/live2
 | **Facebook** | ❌ No | ✅ Yes |
 
 See [Twitch API Tokens](#twitch-api-tokens) and [YouTube API Tokens](#youtube-api-tokens) for auto-fetch setup.
-
-### OBS Settings
-
-**For Instagram/Facebook (required):**
-- Keyframe Interval: 2 seconds
-- Video: H.264, CBR, 3000-4000 kbps
-- Audio: AAC, 44.1kHz, 128kbps
-
-**For YouTube:**
-- Keyframe Interval: 2-4 seconds (same as above otherwise)
-
-The system uses passthrough encoding (`-codec copy`), so correct OBS settings are critical.
 
 ### Getting Manual Stream Keys
 
@@ -114,9 +106,9 @@ Channels are reusable platform destinations. See [Architecture - Channels](Archi
 ```bash
 cd tools
 ./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
-./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
-./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
-./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
+./channelmod --set my_twitch access_token "<your_access_token>"
+./channelmod --set my_twitch client_id "<your_client_id>"
+./channelmod --set my_twitch refresh_token "<your_refresh_token>"
 ./channelmod --set my_twitch display_name "MyTwitchChannel"
 ```
 
@@ -143,9 +135,9 @@ cd tools
 **YouTube with API (auto-fetch keys):**
 ```bash
 ./channelmod --create my_youtube youtube rtmp://a.rtmp.youtube.com/live2
-./channelmod --set my_youtube client_id "$YOUTUBE_CLIENT_ID"
-./channelmod --set my_youtube client_secret "$YOUTUBE_CLIENT_SECRET"
-./channelmod --set my_youtube refresh_token "$YOUTUBE_REFRESH_TOKEN"
+./channelmod --set my_youtube client_id "<your_client_id>"
+./channelmod --set my_youtube client_secret "<your_client_secret>"
+./channelmod --set my_youtube refresh_token "<your_refresh_token>"
 ./channelmod --set my_youtube display_name "My YouTube"
 ```
 
@@ -233,6 +225,88 @@ If compromised, remove and re-add:
 
 **Note:** Do not delete `internal_technical_user` or `vlc_viewer` (system users).
 
+## Scheduling Streams
+
+Schedule streams to automatically start/stop containers at specified times.
+
+### Adding a Stream
+
+```bash
+cd tools
+./streammod --add
+```
+
+Follow the interactive prompts:
+- **Caster**: Select from list
+- **Broadcast**: Select from list
+- **Game**: Select from list
+- **Start time**: Format `DD.MM.YYYY HH:MM` (EU) or `MM/DD/YYYY HH:MM` (US)
+- **End time**: Same format
+
+**Important:**
+- Containers automatically start **30 minutes before** scheduled time
+- Containers automatically stop **30 minutes after** scheduled time
+- Times are in server local time
+
+### Managing Streams
+
+```bash
+./streammod --upcoming   # View future streams
+./streammod --live       # View currently active
+./streammod --list       # View all streams
+./streammod --remove <stream_id>  # Cancel a stream
+```
+
+## Testing Your Setup
+
+Once you've configured channels, broadcasts, and casters, test your streaming setup.
+
+### Manual Test Stream
+
+1. **Start a test container:**
+```bash
+cd tools
+./containermod --start --name nginx-rtmp --caster JohnDoe --broadcast main-show --game csgo
+```
+
+2. **Configure OBS:**
+   - **Server:** `rtmp://stream.yourdomain.com:48001/JohnDoe/`
+   - **Stream Key:** `JohnDoe-abc123def456` (get from `./castermod --list`)
+
+3. **Start streaming in OBS**
+
+4. **Check output** on linked platform channels (Twitch, Instagram, YouTube, etc.)
+
+5. **Stop container when done:**
+```bash
+./containermod --stop --name nginx-rtmp --caster JohnDoe
+```
+
+### Verify Multi-Platform Output
+
+If you linked multiple channels to your broadcast:
+- Check each platform (Twitch, Instagram, YouTube, Facebook)
+- Verify stream appears on all linked platforms
+- Check stream quality and sync
+
+## OBS Settings
+
+The system uses passthrough encoding (`-codec copy`), so correct OBS settings are critical.
+
+**For Instagram/Facebook (required):**
+- Keyframe Interval: 2 seconds
+- Video: H.264, CBR, 3000-4000 kbps
+- Audio: AAC, 44.1kHz, 128kbps
+
+**For YouTube/Twitch:**
+- Keyframe Interval: 2-4 seconds
+- Same video/audio settings as above
+
+**Why keyframe interval matters:**
+- Instagram/Facebook require 2-second keyframes or the stream will fail
+- YouTube/Twitch are more flexible (2-4 seconds)
+- If streaming to multiple platforms, use 2 seconds for compatibility
+
 ## Twitch API Tokens
 
 Enables auto-fetch of stream keys and automatic title/game updates.
@@ -247,9 +321,9 @@ Enables auto-fetch of stream keys and automatic title/game updates.
 
 ```bash
 cd tools
-./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
-./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
-./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
+./channelmod --set my_twitch access_token "<your_access_token>"
+./channelmod --set my_twitch client_id "<your_client_id>"
+./channelmod --set my_twitch refresh_token "<your_refresh_token>"
 ```
 
 ### Refreshing Tokens

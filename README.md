@@ -35,7 +35,7 @@ cd rtmp-proxy-server
 
 # 2. Configure environment variables
 sudo nano /etc/profile.d/stream.sh
-# Set: FQDN, ADMIN_EMAIL, MYSQL credentials, platform API tokens, container versions
+# Set: FQDN, ADMIN_EMAIL, MYSQL credentials, container versions
 # Check the detailed installation guide for all required variables
 source /etc/profile.d/stream.sh
 
@@ -49,9 +49,9 @@ cd tools
 # 5. Add platform channels (destinations)
 # Twitch channel
 ./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
-./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
-./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
-./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
+./channelmod --set my_twitch access_token "<your_access_token>"
+./channelmod --set my_twitch client_id "<your_client_id>"
+./channelmod --set my_twitch refresh_token "<your_refresh_token>"
 
 # Optional: Add other platforms
 ./channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp
@@ -90,10 +90,10 @@ The broadcast (port 48001) outputs to all linked channels (Twitch, Instagram, Yo
 ### Wiki Pages
 
 - [Home](../../wiki/Home) - Overview and getting started
-- [Installation](../../wiki/Installation) - Step-by-step setup guide
+- [Installation](../../wiki/Installation) - Install base containers
+- [Configuration](../../wiki/Configuration) - Set up channels, broadcasts, casters, and streams
 - [Ansible Deployment](../../wiki/Ansible-Deployment) - Automated deployment
 - [Architecture](../../wiki/Architecture) - How the system works
-- [Configuration](../../wiki/Configuration) - Games, channels, tokens, ads
 - [Management Tools](../../wiki/Management-Tools) - Command reference
 - [Building Images](../../wiki/Building-Images) - Build and distribute Docker images
 - [Troubleshooting](../../wiki/Troubleshooting) - Common issues and solutions
