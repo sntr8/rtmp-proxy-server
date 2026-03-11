@@ -174,7 +174,7 @@ cd tools
 
 **Notes:**
 - If not using GitLab registry, edit `build_all_images.sh` to change the registry URL
-- Containers default to UTC timezone. See [Building Images](Building-Images.md#configuring-timezone) for timezone options
+- For advanced image building options see [Building Images](Building-Images.md)
 
 ### Step 4: Initialize Database
 
@@ -439,8 +439,6 @@ cd tools
 
 Ads are served at: `https://stream.yourdomain.com/ads/?game=csgo`
 
-**Note:** Let's Encrypt certificates are automatically renewed by the HAProxy container (checks every 12 hours).
-
 ## Upgrading
 
 ### Database Schema Upgrades
@@ -448,7 +446,7 @@ Ads are served at: `https://stream.yourdomain.com/ads/?game=csgo`
 When upgrading to a new version, apply any new schema changes:
 
 ```bash
-cd mysql/db/upgrade/v1.X
+cd mysql/db/upgrade/X
 docker exec -i mysql mysql -uroot -p$MYSQL_ROOT_PASSWORD $MYSQL_DATABASE < upgrade.sql
 ```
 
@@ -475,7 +473,7 @@ cd tools
 - Read [Architecture](Architecture) to understand how the system works
 - Review [Configuration](Configuration) for advanced settings
 - Check [Management Tools](Management-Tools) for all available commands
-- Set up monitoring (see [Troubleshooting](Troubleshooting#monitoring))
+- For any problems see [Troubleshooting](Troubleshooting)
 
 ---
 
