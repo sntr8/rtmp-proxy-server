@@ -9,19 +9,81 @@ OPERATION=$1
 require_operation "$OPERATION"
 
 case $OPERATION in
+    "--create")
+        NAME=$2
+        PLATFORM=$3
+        STREAM_URL=$4
+        STREAM_KEY=$5
+
+        if [ -z "$NAME" ] || [ -z "$PLATFORM" ] || [ -z "$STREAM_URL" ];
+        then
+            echo "Name, platform, and stream URL required. Try '$SCRIPT_NAME --help' for more information."
+            exit 1
+        fi
+
+        if ! validate_alphanumeric "$NAME";
+        then
+            echo "[ERROR]: Invalid channel name. Only alphanumeric characters, dash, and underscore allowed."
+            exit 1
+        fi
+
+        # Validate platform
+        if [[ ! "$PLATFORM" =~ ^(twitch|instagram|facebook|youtube)$ ]];
+        then
+            echo "Invalid platform. Allowed values are: twitch, instagram, facebook, youtube"
+            exit 1
+        fi
+
+        # Check if channel already exists
+        EXISTING=$(mysql_exec_silent "SELECT name FROM channels WHERE name = '$NAME'")
+        if [ -n "$EXISTING" ];
+        then
+            echo "ERROR: Channel '$NAME' already exists"
+            exit 1
+        fi
+
+        SAFE_URL=$(sanitize_sql_string "$STREAM_URL")
+        SAFE_KEY=$(sanitize_sql_string "$STREAM_KEY")
+
+        # For Twitch, try to auto-fetch stream key if not provided
+        if [ "$PLATFORM" = "twitch" ] && [ -z "$STREAM_KEY" ];
+        then
+            echo "Stream key not provided for Twitch channel."
+            echo "You can provide it later or set up API credentials for auto-fetch."
+        fi
+
+        if mysql_exec "INSERT INTO channels (name, platform, stream_url, stream_key) VALUES ('$NAME', '$PLATFORM', '$SAFE_URL', '$SAFE_KEY')";
+        then
+            echo "Channel '$NAME' created ($PLATFORM)"
+            exit 0
+        else
+            echo "Failed to create channel"
+            exit 1
+        fi
+    ;;
+
     "--list")
         OPTION=$2
 
         if [ -z "$OPTION" ];
         then
+            # List all channels
             echo "Available channels:"
-            mysql_exec_silent "SELECT name FROM channels WHERE access_token IS NOT NULL ORDER by name"
+            mysql_exec_interactive "
+                SELECT
+                    name AS Channel,
+                    platform AS Platform,
+                    stream_url AS 'Stream URL',
+                    IF(stream_key IS NOT NULL, 'set', 'not set') AS 'Stream Key',
+                    display_name AS 'Display Name'
+                FROM channels
+                ORDER BY platform, name"
             exit 0
         fi
 
         case $OPTION in
             "--ids")
-                mysql_exec_interactive "SELECT id, name FROM channels WHERE access_token IS NOT NULL AND name != 'proxy-only' ORDER BY id"
+                mysql_exec_interactive "SELECT id, name, platform FROM channels ORDER BY id"
                 exit 0
             ;;
             *)
@@ -29,6 +91,7 @@ case $OPERATION in
             ;;
         esac
     ;;
+
     "--get-id")
         CHANNEL_NAME="$2"
 
@@ -47,6 +110,7 @@ case $OPERATION in
         mysql_exec_silent "SELECT id FROM channels WHERE name = '$CHANNEL_NAME'"
         exit 0
     ;;
+
     "--refresh-tokens")
         CHANNEL=$2
 
@@ -56,8 +120,17 @@ case $OPERATION in
             exit 1
         fi
 
-        if ! search_channel "$CHANNEL";
+        # Check if channel exists and is Twitch
+        PLATFORM=$(mysql_exec_silent "SELECT platform FROM channels WHERE name = '$CHANNEL'")
+        if [ -z "$PLATFORM" ];
         then
+            echo "ERROR: Channel '$CHANNEL' not found"
+            exit 1
+        fi
+
+        if [ "$PLATFORM" != "twitch" ];
+        then
+            echo "ERROR: Token refresh only supported for Twitch channels"
             exit 1
         fi
 
@@ -70,37 +143,29 @@ case $OPERATION in
             exit 1
         fi
     ;;
+
     "--set")
         CHANNEL=$2
         KEY=$3
         VALUE=$4
 
-        if [ -z "$CHANNEL" ];
+        if [ -z "$CHANNEL" ] || [ -z "$KEY" ] || [ -z "$VALUE" ];
         then
-            echo "Channel was not given. Try '$SCRIPT_NAME --help' for more information."
+            echo "Channel name, key, and value required. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
-        if ! search_channel "$CHANNEL";
+        # Check if channel exists
+        CHANNEL_ID=$(mysql_exec_silent "SELECT id FROM channels WHERE name = '$CHANNEL'")
+        if [ -z "$CHANNEL_ID" ];
         then
+            echo "ERROR: Channel '$CHANNEL' not found"
             exit 1
         fi
 
         if ! validate_alphanumeric "$CHANNEL";
         then
             echo "[ERROR]: Invalid channel name. Only alphanumeric characters, dash, and underscore allowed."
-            exit 1
-        fi
-
-        if [ -z "$KEY" ];
-        then
-            echo "Key-value pair was not given. Try '$SCRIPT_NAME --help' for more information."
-            exit 1
-        fi
-
-        if [ -z "$VALUE" ];
-        then
-            echo "Key-value pair was not given. Try '$SCRIPT_NAME --help' for more information."
             exit 1
         fi
 
@@ -150,13 +215,13 @@ case $OPERATION in
                     echo "Platform change failed"
                 fi
             ;;
-            "url")
-                if mysql_exec "UPDATE channels SET url = '$SAFE_VALUE' WHERE name = '$CHANNEL'";
+            "stream_url")
+                if mysql_exec "UPDATE channels SET stream_url = '$SAFE_VALUE' WHERE name = '$CHANNEL'";
                 then
-                    echo "URL updated for channel $CHANNEL"
+                    echo "Stream URL updated for channel $CHANNEL"
                     exit 0
                 else
-                    echo "URL change failed"
+                    echo "Stream URL change failed"
                 fi
             ;;
             "display_name")
@@ -178,11 +243,12 @@ case $OPERATION in
                 fi
             ;;
             *)
-                echo "Key not recognised. Allowed values are: access_token, client_id, refresh_token, platform, url, display_name, stream_key"
+                echo "Key not recognised. Allowed values are: access_token, client_id, refresh_token, platform, stream_url, display_name, stream_key"
                 exit 1
             ;;
         esac
     ;;
+
     "--test-tokens")
         CHANNEL=$2
 
@@ -192,8 +258,17 @@ case $OPERATION in
             exit 1
         fi
 
-        if ! search_channel "$CHANNEL";
+        # Check if channel exists and is Twitch
+        PLATFORM=$(mysql_exec_silent "SELECT platform FROM channels WHERE name = '$CHANNEL'")
+        if [ -z "$PLATFORM" ];
         then
+            echo "ERROR: Channel '$CHANNEL' not found"
+            exit 1
+        fi
+
+        if [ "$PLATFORM" != "twitch" ];
+        then
+            echo "ERROR: Token testing only supported for Twitch channels"
             exit 1
         fi
 
@@ -208,9 +283,9 @@ case $OPERATION in
             exit 1
         fi
     ;;
-    "--get")
+
+    "--auto-fetch-key")
         CHANNEL=$2
-        KEY=$3
 
         if [ -z "$CHANNEL" ];
         then
@@ -218,14 +293,66 @@ case $OPERATION in
             exit 1
         fi
 
-        if ! search_channel "$CHANNEL";
+        # Check if channel exists and is Twitch
+        PLATFORM=$(mysql_exec_silent "SELECT platform FROM channels WHERE name = '$CHANNEL'")
+        if [ -z "$PLATFORM" ];
         then
+            echo "ERROR: Channel '$CHANNEL' not found"
             exit 1
         fi
 
-        if [ -z "$KEY" ];
+        if [ "$PLATFORM" != "twitch" ];
         then
-            echo "Key was not given. Try '$SCRIPT_NAME --help' for more information."
+            echo "ERROR: Auto-fetch only supported for Twitch channels"
+            exit 1
+        fi
+
+        # Check if channel has API credentials
+        ACCESS_TOKEN=$(mysql_exec_silent "SELECT access_token FROM channels WHERE name = '$CHANNEL'")
+        CLIENT_ID=$(mysql_exec_silent "SELECT client_id FROM channels WHERE name = '$CHANNEL'")
+
+        if [ -z "$ACCESS_TOKEN" ] || [ -z "$CLIENT_ID" ];
+        then
+            echo "ERROR: Channel '$CHANNEL' is missing Twitch API credentials"
+            echo "Set them first with:"
+            echo "  channelmod --set $CHANNEL access_token <token>"
+            echo "  channelmod --set $CHANNEL client_id <client_id>"
+            echo "  channelmod --set $CHANNEL refresh_token <refresh_token>"
+            exit 1
+        fi
+
+        echo "Fetching stream key from Twitch API for $CHANNEL..."
+        STREAM_KEY=$(twitch_get_stream_key $CHANNEL)
+
+        if [ $? -eq 0 ] && [ ! -z "$STREAM_KEY" ] && [ "$STREAM_KEY" != "null" ];
+        then
+            # Store the stream key
+            mysql_exec_silent "UPDATE channels SET stream_key = '$STREAM_KEY' WHERE name = '$CHANNEL'"
+            echo "Stream key fetched and stored successfully for $CHANNEL"
+            exit 0
+        else
+            echo "ERROR: Failed to fetch stream key for $CHANNEL"
+            echo "Make sure your Twitch API credentials are valid"
+            echo "Try: channelmod --test-tokens $CHANNEL"
+            exit 1
+        fi
+    ;;
+
+    "--get")
+        CHANNEL=$2
+        KEY=$3
+
+        if [ -z "$CHANNEL" ] || [ -z "$KEY" ];
+        then
+            echo "Channel and key required. Try '$SCRIPT_NAME --help' for more information."
+            exit 1
+        fi
+
+        # Check if channel exists
+        CHANNEL_ID=$(mysql_exec_silent "SELECT id FROM channels WHERE name = '$CHANNEL'")
+        if [ -z "$CHANNEL_ID" ];
+        then
+            echo "ERROR: Channel '$CHANNEL' not found"
             exit 1
         fi
 
@@ -234,138 +361,200 @@ case $OPERATION in
                 mysql_exec_silent "SELECT refresh_token FROM channels WHERE name = '$CHANNEL'"
                 exit 0
             ;;
+            "stream_key")
+                mysql_exec_silent "SELECT stream_key FROM channels WHERE name = '$CHANNEL'"
+                exit 0
+            ;;
             *)
-                echo "Key not recognised. Allowed values are: refresh_token"
+                echo "Key not recognised. Allowed values are: refresh_token, stream_key"
                 exit 1
             ;;
         esac
     ;;
+
+    "--remove")
+        CHANNEL=$2
+
+        if [ -z "$CHANNEL" ];
+        then
+            echo "Channel name not provided. Try '$SCRIPT_NAME --help' for more information."
+            exit 1
+        fi
+
+        if ! validate_alphanumeric "$CHANNEL";
+        then
+            echo "[ERROR]: Invalid channel name."
+            exit 1
+        fi
+
+        # Check if channel exists
+        CHANNEL_ID=$(mysql_exec_silent "SELECT id FROM channels WHERE name = '$CHANNEL'")
+        if [ -z "$CHANNEL_ID" ];
+        then
+            echo "ERROR: Channel '$CHANNEL' not found"
+            exit 1
+        fi
+
+        # Check if channel is linked to any broadcasts
+        LINKED_COUNT=$(mysql_exec_silent "SELECT COUNT(*) FROM broadcast_channels WHERE channel_id = $CHANNEL_ID")
+        LINKED_COUNT=$(strip_cr "$LINKED_COUNT")
+
+        if [ "$LINKED_COUNT" -gt 0 ];
+        then
+            echo "WARNING: Channel '$CHANNEL' is linked to $LINKED_COUNT broadcast(s)"
+            echo "Removing the channel will unlink it from all broadcasts."
+            read -r -p "Continue? [y/N] " RESPONSE
+            case "$RESPONSE" in
+                [yY][eE][sS]|[yY])
+                    # Continue
+                ;;
+                *)
+                    echo "Cancelled"
+                    exit 0
+                ;;
+            esac
+        fi
+
+        if mysql_exec "DELETE FROM channels WHERE name = '$CHANNEL'";
+        then
+            echo "Channel '$CHANNEL' removed"
+            exit 0
+        else
+            echo "Failed to remove channel"
+            exit 1
+        fi
+    ;;
+
     "--help")
-        echo "$SCRIPT_NAME -- Manage streaming channels and API tokens
+        echo "$SCRIPT_NAME -- Manage platform channels
 
 DESCRIPTION:
-  Manage channel configurations for multiple platforms (Twitch, Instagram, Facebook, YouTube).
-  Includes API token management for Twitch channels and platform-specific settings.
-  Handles both regular streaming channels and internal proxy channels.
+  Channels are platform-specific streaming destinations (Twitch, Instagram, Facebook, YouTube).
+  Channels are reusable and can be linked to multiple broadcasts via broadcastmod.
 
 USAGE:
   $SCRIPT_NAME <operation> [parameters]
 
 OPERATIONS:
 
+  --create <name> <platform> <stream_url> [stream_key]
+    Create a new platform channel.
+
+    Parameters:
+      - name:       Channel identifier (e.g., my_twitch, my_instagram)
+      - platform:   twitch, instagram, facebook, or youtube
+      - stream_url: Platform RTMP URL
+      - stream_key: Optional stream key
+
+    Usage: $SCRIPT_NAME --create my_twitch twitch rtmp://live.twitch.tv/app
+    Usage: $SCRIPT_NAME --create my_ig instagram rtmp://live-upload.instagram.com:80/rtmp <key>
+
   --list [option]
-    List available channels in the database.
+    List available channels.
 
-    Usage: $SCRIPT_NAME --list            (show Twitch channel names)
-    Usage: $SCRIPT_NAME --list --ids      (show IDs and names)
-
-    Note: Only lists channels with access_token (excludes proxy-only channels)
+    Usage: $SCRIPT_NAME --list            # Show all channels
+    Usage: $SCRIPT_NAME --list --ids      # Show IDs and names
 
   --get-id <channel_name>
     Get the database ID for a specific channel.
 
-    Usage: $SCRIPT_NAME --get-id yourchannel
-
-    Returns: Channel ID number
+    Usage: $SCRIPT_NAME --get-id my_twitch
 
   --get <channel> <key>
     Fetch a specific value from the database for a channel.
 
     Parameters:
-      - channel: Channel name (e.g., yourchannel)
-      - key:     Database field name (currently only 'refresh_token' supported)
+      - key: refresh_token, stream_key
 
-    Usage: $SCRIPT_NAME --get yourchannel refresh_token
+    Usage: $SCRIPT_NAME --get my_twitch refresh_token
 
   --set <channel> <key> <value>
     Update a specific value in the database for a channel.
 
     Parameters:
-      - channel: Channel name (e.g., yourchannel)
-      - key:     Field to update (access_token, client_id, refresh_token, platform, url, display_name)
-      - value:   New value for the field
+      - key: access_token, client_id, refresh_token, platform, stream_url, display_name, stream_key
 
-    Usage: $SCRIPT_NAME --set yourchannel access_token abc123xyz789
-    Usage: $SCRIPT_NAME --set yourchannel client_id gp762nuuoqcoxypju8c569th9wz7q5
-    Usage: $SCRIPT_NAME --set yourchannel refresh_token def456uvw012
-    Usage: $SCRIPT_NAME --set yourchannel platform instagram
-    Usage: $SCRIPT_NAME --set yourchannel url rtmp://live-upload.instagram.com:80/rtmp
-    Usage: $SCRIPT_NAME --set yourchannel display_name "My Channel"
+    Usage: $SCRIPT_NAME --set my_twitch access_token abc123xyz789
+    Usage: $SCRIPT_NAME --set my_ig stream_key new_instagram_key
+    Usage: $SCRIPT_NAME --set my_twitch display_name \"My Main Twitch\"
+
+  --remove <channel>
+    Remove a channel. Warns if channel is linked to broadcasts.
+
+    Usage: $SCRIPT_NAME --remove my_instagram
 
   --refresh-tokens <channel>
-    Manually trigger Twitch token refresh using twitchtokengenerator.com API.
-    Uses the channel's refresh_token to obtain a new access_token.
+    Manually trigger Twitch token refresh (Twitch channels only).
 
-    Usage: $SCRIPT_NAME --refresh-tokens yourchannel
-
-    Note: Tokens expire after 60 days. System attempts auto-refresh when needed.
+    Usage: $SCRIPT_NAME --refresh-tokens my_twitch
 
   --test-tokens <channel>
-    Validate that a channel's Twitch API tokens are currently valid.
+    Validate that a Twitch channel's API tokens are currently valid.
 
-    Usage: $SCRIPT_NAME --test-tokens yourchannel
+    Usage: $SCRIPT_NAME --test-tokens my_twitch
 
-    Returns: Exit 0 if valid, exit 1 if invalid
+  --auto-fetch-key <channel>
+    Automatically fetch and store the stream key from Twitch API (Twitch only).
+    Requires channel to have access_token and client_id configured.
+
+    Usage: $SCRIPT_NAME --auto-fetch-key my_twitch
 
 EXAMPLES:
 
-  # List all Twitch channels
+  # Create Twitch channel with API auto-fetch
+  channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
+  channelmod --set my_twitch access_token <token>
+  channelmod --set my_twitch client_id <client_id>
+  channelmod --set my_twitch refresh_token <refresh_token>
+  channelmod --auto-fetch-key my_twitch    # Fetch stream key from API
+
+  # Or create Twitch channel with manual key
+  channelmod --create my_twitch twitch rtmp://live.twitch.tv/app <stream_key>
+
+  # Create Instagram channel with key
+  channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp <ig_key>
+
+  # Create Facebook channel
+  channelmod --create my_facebook facebook rtmps://live-api-s.facebook.com:443/rtmp <fb_key>
+
+  # Create YouTube channel
+  channelmod --create my_youtube youtube rtmp://a.rtmp.youtube.com/live2 <yt_key>
+
+  # List all channels
   channelmod --list
 
-  # Get channel ID for use in other commands
-  channelmod --get-id yourchannel
+  # Update stream key
+  channelmod --set my_instagram stream_key new_key_here
 
-  # Check if tokens are valid
-  channelmod --test-tokens yourchannel
+  # Test Twitch tokens
+  channelmod --test-tokens my_twitch
 
-  # Manually refresh expired tokens
-  channelmod --refresh-tokens yourchannel
+  # Refresh Twitch tokens
+  channelmod --refresh-tokens my_twitch
 
-  # Update access token after manual fetch from twitchtokengenerator.com
-  channelmod --set yourchannel access_token new_token_here
-  channelmod --set yourchannel refresh_token new_refresh_token_here
-  channelmod --set yourchannel client_id new_client_id_here
+PLATFORM-SPECIFIC NOTES:
 
-  # Configure channel for Instagram
-  channelmod --set myig platform instagram
-  channelmod --set myig url rtmp://live-upload.instagram.com:80/rtmp
-  channelmod --set myig display_name "My Instagram"
+  Twitch:
+    - Can use API for automatic stream key fetching
+    - Requires access_token, client_id, refresh_token
+    - Stream keys are auto-fetched at container start if API credentials present
+    - Use --auto-fetch-key to manually fetch and store key
+    - Tokens expire after ~60 days, use --refresh-tokens
 
-  # Get current refresh token
-  channelmod --get yourchannel refresh_token
+  Instagram/Facebook/YouTube:
+    - Manual stream key required
+    - Get keys from platform's live streaming dashboard
+    - Keys may expire, update with --set
 
-PLATFORM CONFIGURATION:
-  Supported platforms: twitch, instagram, facebook, youtube
-
-  Platform-specific settings:
-    - platform: Determines encoding parameters and stream URL format
-    - url:      RTMP ingest URL for the platform
-
-  Default RTMP URLs:
-    - Twitch:    rtmp://live.twitch.tv/app
-    - Instagram: rtmp://live-upload.instagram.com:80/rtmp
-    - Facebook:  rtmps://live-api-s.facebook.com:443/rtmp
-    - YouTube:   rtmp://a.rtmp.youtube.com/live2
-
-TWITCH API TOKENS:
-  Twitch channels need three tokens from twitchtokengenerator.com:
-    - access_token:  Used for Twitch Helix API calls (expires in 60 days)
-    - refresh_token: Used to refresh the access_token automatically
-    - client_id:     Application identifier
-
-  When access_token expires:
-    1. System automatically attempts refresh using refresh_token
-    2. If auto-refresh fails, Discord notification is sent
-    3. Manual update required using --set command
-
-NOTES:
-  - Proxy channels (e.g., only1-proxy) don't have Twitch tokens
-  - Token validation happens automatically when containers start
-  - Failed token refresh triggers Discord alerts to support group
-  - Non-Twitch platforms require stream key to be provided via --key parameter
+WORKFLOW:
+  1. Create channels with channelmod --create
+  2. Create broadcasts with broadcastmod --create
+  3. Link channels to broadcasts with broadcastmod --link
+  4. Start streaming with containermod --broadcast <name>
 "
         exit 0
     ;;
+
     *)
         echo "Option $OPERATION not recognised. Try '$SCRIPT_NAME --help' for more information"
         exit 1

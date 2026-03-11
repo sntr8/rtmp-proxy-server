@@ -55,19 +55,19 @@ case $OPERATION in
             ;;
         esac
 
-        echo "Available channels: "
-        channelmod --list --ids
-        read -r -p "What's the channel ID (Use the list above): " CHANNEL
+        echo "Available broadcasts: "
+        broadcastmod --list
+        read -r -p "What's the broadcast ID (Use the list above): " BROADCAST
 
-        if ! validate_numeric "$CHANNEL";
+        if ! validate_numeric "$BROADCAST";
         then
-            echo "[ERROR]: Invalid channel ID. Must be a number."
+            echo "[ERROR]: Invalid broadcast ID. Must be a number."
             exit 1
         fi
 
-        if ! db_get_channel_name_with_id $CHANNEL > /dev/null;
+        if ! db_get_broadcast_name_with_id $BROADCAST > /dev/null;
         then
-            echo "$CHANNEL is not a valid channel ID"
+            echo "$BROADCAST is not a valid broadcast ID"
             exit 1
         fi
 
@@ -103,9 +103,9 @@ case $OPERATION in
             exit 1
         fi
 
-        if ! db_is_channel_free "$START_TIME_MYSQL" $CHANNEL;
+        if ! db_is_broadcast_free "$START_TIME_MYSQL" $BROADCAST;
         then
-            echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
+            echo "ERROR: The requested broadcast is occupied at the requested time. Can't schedule a stream."
             exit 1
         fi
 
@@ -126,15 +126,15 @@ case $OPERATION in
             exit 1
         fi
 
-        if ! db_is_channel_free "$END_TIME_MYSQL" $CHANNEL;
+        if ! db_is_broadcast_free "$END_TIME_MYSQL" $BROADCAST;
         then
-            echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
+            echo "ERROR: The requested broadcast is occupied at the requested time. Can't schedule a stream."
             exit 1
         fi
 
-        if ! db_stream_collides_with_another "$CHANNEL" "$START_TIME_MYSQL" "$END_TIME_MYSQL";
+        if ! db_stream_collides_with_another "$BROADCAST" "$START_TIME_MYSQL" "$END_TIME_MYSQL";
         then
-            echo "ERROR: The requested channel is already occupied during the requested timespan. Can't schedule a stream."
+            echo "ERROR: The requested broadcast is already occupied during the requested timespan. Can't schedule a stream."
             exit 1
         fi
 
@@ -144,7 +144,7 @@ case $OPERATION in
 
         echo "Creating a stream with details:
     Caster: $(db_get_caster_name_with_id $CASTER)
-    Channel: $(db_get_channel_name_with_id $CHANNEL)
+    Broadcast: $(db_get_broadcast_name_with_id $BROADCAST)
     Game: $(db_get_game_name_with_id $GAME)
     Twitch title: $TITLE
     Start time: $START_TIME_MYSQL
@@ -162,9 +162,9 @@ case $OPERATION in
                 SAFE_TITLE=$(sanitize_sql_string "$TITLE")
                 if [ ! -z "$COCASTER" ];
                 then
-                  mysql_exec "INSERT INTO streams (\`caster_id\`, \`cocaster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $COCASTER, $CHANNEL, $GAME, '$SAFE_TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
+                  mysql_exec "INSERT INTO streams (\`caster_id\`, \`cocaster_id\`, \`broadcast_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $COCASTER, $BROADCAST, $GAME, '$SAFE_TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
                 else
-                  mysql_exec "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $CHANNEL, $GAME, '$SAFE_TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
+                  mysql_exec "INSERT INTO streams (\`caster_id\`, \`broadcast_id\`, \`game_id\`, \`title\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $BROADCAST, $GAME, '$SAFE_TITLE', false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
                 fi
                 if [ $? -eq 0 ];
                 then
@@ -232,24 +232,24 @@ case $OPERATION in
         echo "Container will be stopped $CONTAINER_BUFFER_MINUTES minutes after the stream, if possible."
 
         PROXY_COUNT=$(db_get_proxychannel_count)
-        PROXY_CHANNEL=""
-        PROXY_CHANNEL_ID=""
+        PROXY_BROADCAST=""
+        PROXY_BROADCAST_ID=""
         for (( i=1; i <= PROXY_COUNT; i++ ))
         do
-          I_CHANNEL_ID=$(channelmod --get-id "only$i-proxy")
-          if db_is_channel_free "$START_TIME_MYSQL" $I_CHANNEL_ID;
+          I_BROADCAST_ID=$(db_get_broadcast_id_with_name "only$i-proxy")
+          if db_is_broadcast_free "$START_TIME_MYSQL" $I_BROADCAST_ID;
           then
-            if db_is_channel_free "$END_TIME_MYSQL" $I_CHANNEL_ID;
+            if db_is_broadcast_free "$END_TIME_MYSQL" $I_BROADCAST_ID;
             then
-              PROXY_CHANNEL_ID=$I_CHANNEL_ID
+              PROXY_BROADCAST_ID=$I_BROADCAST_ID
               break
             fi
           fi
         done
 
-        if [ -z "$PROXY_CHANNEL_ID" ];
+        if [ -z "$PROXY_BROADCAST_ID" ];
         then
-          echo "No proxy channel was free for the stream. Can't schedule one"
+          echo "No proxy broadcast was free for the stream. Can't schedule one"
           exit 1
         fi
 
@@ -257,7 +257,7 @@ case $OPERATION in
 
         echo "Creating a proxy server with details:
     Caster: $(db_get_caster_name_with_id $CASTER)
-    Channel: $(db_get_channel_name_with_id $PROXY_CHANNEL_ID)
+    Broadcast: $(db_get_broadcast_name_with_id $PROXY_BROADCAST_ID)
     Start time: $START_TIME_MYSQL
     End time: $END_TIME_MYSQL
         "
@@ -265,7 +265,7 @@ case $OPERATION in
         read -r -p "Are you sure you want to create a proxy server with above details? [y/N] " RESPONSE
         case "$RESPONSE" in
             [yY][eE][sS]|[yY])
-                mysql_exec "INSERT INTO streams (\`caster_id\`, \`channel_id\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $PROXY_CHANNEL_ID, false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
+                mysql_exec "INSERT INTO streams (\`caster_id\`, \`broadcast_id\`, \`live\`, \`skip\`, \`start_time\`, \`end_time\`) VALUES ($CASTER, $PROXY_BROADCAST_ID, false, false, STR_TO_DATE('$START_TIME_MYSQL','%Y-%m-%d %H:%i'), STR_TO_DATE('$END_TIME_MYSQL','%Y-%m-%d %H:%i'))"
                 if [ $? -eq 0 ];
                 then
                     exit 0
@@ -284,7 +284,7 @@ case $OPERATION in
         OPTION=$2
         if [ -z "$OPTION" ];
         then
-            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND s.live = true"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, b.name as broadcast, g.name as game, s.start_time, s.end_time FROM casters ca, broadcasts b, games g, streams s WHERE s.caster_id = ca.id AND s.broadcast_id = b.id AND s.game_id = g.id AND s.live = true"
             exit 0
         else
             case $OPTION in
@@ -300,9 +300,9 @@ case $OPERATION in
         if [ -z "$OPTION" ];
         then
             echo "Upcoming streams: "
-            mysql_exec_interactive "SELECT s.id, ca.nick as caster, (SELECT IFNULL(cc.nick, \"Not set\") FROM casters cc, streams st WHERE cc.id = st.cocaster_id AND st.id = s.id) as cocaster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND ch.access_token IS NOT NULL and start_time >= NOW() ORDER BY start_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, (SELECT IFNULL(cc.nick, \"Not set\") FROM casters cc, streams st WHERE cc.id = st.cocaster_id AND st.id = s.id) as cocaster, b.name as broadcast, g.name as game, s.start_time, s.end_time FROM casters ca, broadcasts b, games g, streams s WHERE s.caster_id = ca.id AND s.broadcast_id = b.id AND s.game_id = g.id AND start_time >= NOW() ORDER BY start_time"
             echo "Upcoming proxies"
-            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, s.start_time, s.end_time FROM casters ca, channels ch, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND ch.name LIKE '%-proxy' AND start_time >= NOW() AND ch.access_token IS NULL ORDER BY start_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, b.name as broadcast, s.start_time, s.end_time FROM casters ca, broadcasts b, streams s WHERE s.caster_id = ca.id AND s.broadcast_id = b.id AND b.name LIKE '%-proxy' AND start_time >= NOW() ORDER BY start_time"
             exit 0
         else
             case $OPTION in
@@ -328,7 +328,7 @@ case $OPERATION in
         fi
 
         CASTER_NAME=$(db_get_caster_with_stream_id $STREAM_ID)
-        CHANNEL_NAME=$(db_get_channel_with_stream_id $STREAM_ID)
+        BROADCAST_NAME=$(db_get_channel_with_stream_id $STREAM_ID)
         COCASTER=$(db_get_cocaster_name_with_stream_id $STREAM_ID)
         TITLE=$(db_get_stream_title $STREAM_ID)
         START_TIME=$(db_get_stream_start_time $STREAM_ID)
@@ -361,28 +361,28 @@ case $OPERATION in
 
         printf "\n"
 
-        echo "Stream channel is: $CHANNEL_NAME"
-        read -r -p "Want to edit the channel? [y/N] " RESPONSE_CHANNEL
+        echo "Stream broadcast is: $BROADCAST_NAME"
+        read -r -p "Want to edit the broadcast? [y/N] " RESPONSE_BROADCAST
 
-        case "$RESPONSE_CHANNEL" in
+        case "$RESPONSE_BROADCAST" in
             [yY][eE][sS]|[yY])
-                echo "Available channels: "
-                channelmod --list --ids
-                read -r -p "What's the channel ID (Use the list above): " EDIT_CHANNEL
+                echo "Available broadcasts: "
+                broadcastmod --list
+                read -r -p "What's the broadcast ID (Use the list above): " EDIT_BROADCAST
 
-                if ! validate_numeric "$EDIT_CHANNEL";
+                if ! validate_numeric "$EDIT_BROADCAST";
                 then
-                    echo "[ERROR]: Invalid channel ID. Must be a number."
+                    echo "[ERROR]: Invalid broadcast ID. Must be a number."
                     exit 1
                 fi
 
-                if ! db_get_channel_name_with_id $EDIT_CHANNEL > /dev/null;
+                if ! db_get_broadcast_name_with_id $EDIT_BROADCAST > /dev/null;
                 then
-                    echo "$EDIT_CHANNEL is not a valid channel ID"
+                    echo "$EDIT_BROADCAST is not a valid broadcast ID"
                     exit 1
                 fi
 
-                mysql_exec_silent "UPDATE streams SET channel_id = $EDIT_CHANNEL WHERE id = $STREAM_ID"
+                mysql_exec_silent "UPDATE streams SET broadcast_id = $EDIT_BROADCAST WHERE id = $STREAM_ID"
                 echo "Updated to the database"
             ;;
         esac
@@ -492,15 +492,15 @@ No changes: N
                     exit 1
                 fi
 
-                if ! db_is_channel_free "$EDIT_START_TIME_MYSQL" $(channelmod --get-id $CHANNEL_NAME) $STREAM_ID;
+                if ! db_is_broadcast_free "$EDIT_START_TIME_MYSQL" $(db_get_broadcast_id_with_name $BROADCAST_NAME) $STREAM_ID;
                 then
-                  echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
+                  echo "ERROR: The requested broadcast is occupied at the requested time. Can't schedule a stream."
                   exit 1
                 fi
 
-                if ! db_stream_collides_with_another "$(channelmod --get-id $CHANNEL_NAME)" "$EDIT_START_TIME_MYSQL" "$END_TIME" $STREAM_ID;
+                if ! db_stream_collides_with_another "$(db_get_broadcast_id_with_name $BROADCAST_NAME)" "$EDIT_START_TIME_MYSQL" "$END_TIME" $STREAM_ID;
                 then
-                    echo "ERROR: The requested channel is already occupied during the requested timespan. Can't schedule a stream."
+                    echo "ERROR: The requested broadcast is already occupied during the requested timespan. Can't schedule a stream."
                     exit 1
                 fi
 
@@ -533,15 +533,15 @@ No changes: N
                     exit 1
                 fi
 
-                if ! db_is_channel_free "$EDIT_END_TIME_MYSQL" $(channelmod --get-id $CHANNEL_NAME) $STREAM_ID;
+                if ! db_is_broadcast_free "$EDIT_END_TIME_MYSQL" $(db_get_broadcast_id_with_name $BROADCAST_NAME) $STREAM_ID;
                 then
-                  echo "ERROR: The requested channel is occupied at the requested time. Can't schedule a stream."
+                  echo "ERROR: The requested broadcast is occupied at the requested time. Can't schedule a stream."
                   exit 1
                 fi
 
-                if ! db_stream_collides_with_another "$(channelmod --get-id $CHANNEL_NAME)" "$START_TIME" "$EDIT_END_TIME_MYSQL" $STREAM_ID;
+                if ! db_stream_collides_with_another "$(db_get_broadcast_id_with_name $BROADCAST_NAME)" "$START_TIME" "$EDIT_END_TIME_MYSQL" $STREAM_ID;
                 then
-                    echo "ERROR: The requested channel is already occupied during the requested timespan. Can't schedule a stream."
+                    echo "ERROR: The requested broadcast is already occupied during the requested timespan. Can't schedule a stream."
                     exit 1
                 fi
 
@@ -584,9 +584,9 @@ No changes: N
         if [ -z "$OPTION" ];
         then
             echo "Starting streams:"
-            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) ORDER BY start_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, b.name as broadcast, g.name as game, s.start_time, s.end_time FROM casters ca, broadcasts b, games g, streams s WHERE s.caster_id = ca.id AND s.broadcast_id = b.id AND s.game_id = g.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) ORDER BY start_time"
             echo "Starting proxies:"
-            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, s.start_time, s.end_time FROM casters ca, channels ch, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) ORDER BY start_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, b.name as broadcast, s.start_time, s.end_time FROM casters ca, broadcasts b, streams s WHERE s.caster_id = ca.id AND s.broadcast_id = b.id AND start_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) ORDER BY start_time"
             exit 0
         else
             case $OPTION in
@@ -605,7 +605,7 @@ No changes: N
         OPTION=$2
         if [ -z "$OPTION" ];
         then
-            mysql_exec_interactive "SELECT s.id, ca.nick as caster, ch.name as channel, g.name as game, s.start_time, s.end_time FROM casters ca, channels ch, games g, streams s WHERE s.caster_id = ca.id AND s.channel_id = ch.id AND s.game_id = g.id AND end_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) ORDER BY end_time"
+            mysql_exec_interactive "SELECT s.id, ca.nick as caster, b.name as broadcast, g.name as game, s.start_time, s.end_time FROM casters ca, broadcasts b, games g, streams s WHERE s.caster_id = ca.id AND s.broadcast_id = b.id AND s.game_id = g.id AND end_time BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL $CONTAINER_BUFFER_MINUTES MINUTE) ORDER BY end_time"
             exit 0
         else
             case $OPTION in
@@ -688,7 +688,7 @@ USER OPERATIONS:
     Interactive tool to schedule a new stream. Prompts for:
     - Caster ID (from castermod --list --ids)
     - Co-caster ID (optional, for proxy container)
-    - Channel ID (from channelmod --list --ids)
+    - Broadcast ID (from broadcastmod --list)
     - Game ID (from gamemod --list --ids)
     - Twitch title
     - Start time (format: DD.MM.YYYY HH:MM or MM/DD/YYYY HH:MM)
@@ -700,7 +700,7 @@ USER OPERATIONS:
 
   --add-proxy
     Interactive tool to schedule a proxy-only container (no Twitch stream).
-    Automatically selects an available proxy channel (only1-proxy through only6-proxy).
+    Automatically selects an available proxy broadcast (only1-proxy through only6-proxy).
 
     Usage: $SCRIPT_NAME --add-proxy
 
@@ -732,7 +732,7 @@ USER OPERATIONS:
 
   --update <stream_id>
     Interactive tool to update an existing scheduled stream.
-    Allows editing caster, channel, game, title, start time, and end time.
+    Allows editing caster, broadcast, game, title, start time, and end time.
 
     Usage: $SCRIPT_NAME --update 42
 

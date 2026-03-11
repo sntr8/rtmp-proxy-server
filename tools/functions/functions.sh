@@ -213,6 +213,8 @@ db_get_caster_with_stream_id() {
 }
 
 db_get_channel_with_stream_id() {
+    # Legacy function name - now returns broadcast name for backward compatibility
+    # TODO: Rename to db_get_broadcast_with_stream_id() and update all callers
     STREAM=$1
 
     if [ -z "$STREAM" ];
@@ -220,8 +222,8 @@ db_get_channel_with_stream_id() {
         echo "Stream ID was not provided"
         return 1
     else
-        CHANNEL=$(mysql_exec_silent "SELECT c.name FROM channels c, streams s WHERE c.id = s.channel_id AND s.id = '$STREAM'")
-        echo $(strip_cr "$CHANNEL")
+        BROADCAST=$(mysql_exec_silent "SELECT b.name FROM broadcasts b, streams s WHERE b.id = s.broadcast_id AND s.id = '$STREAM'")
+        echo $(strip_cr "$BROADCAST")
     fi
 }
 
@@ -290,7 +292,7 @@ db_get_cocaster_name_with_stream_id() {
 }
 
 db_get_proxychannel_count() {
-  COUNT=$(mysql_exec_silent "SELECT count(*) FROM channels WHERE name LIKE 'only%-proxy'")
+  COUNT=$(mysql_exec_silent "SELECT count(*) FROM broadcasts WHERE name LIKE 'only%-proxy'")
   echo $(strip_cr "$COUNT")
 }
 
@@ -310,6 +312,57 @@ db_get_game_name_with_id() {
         else
             return 1
         fi
+    fi
+}
+
+db_get_broadcast_name_with_id() {
+    BROADCAST=$1
+
+    if [ -z "$BROADCAST" ];
+    then
+        echo "Broadcast ID was not provided"
+        return 1
+    else
+        NAME=$(mysql_exec_silent "SELECT name FROM broadcasts WHERE id = '$BROADCAST'")
+        if [ ! -z "$NAME" ];
+        then
+            echo $NAME
+            return 0
+        else
+            return 1
+        fi
+    fi
+}
+
+db_get_broadcast_id_with_name() {
+    BROADCAST=$1
+
+    if [ -z "$BROADCAST" ];
+    then
+        echo "Broadcast name was not provided"
+        return 1
+    else
+        ID=$(mysql_exec_silent "SELECT id FROM broadcasts WHERE name = '$BROADCAST'")
+        if [ ! -z "$ID" ];
+        then
+            echo $(strip_cr "$ID")
+            return 0
+        else
+            return 1
+        fi
+    fi
+}
+
+db_get_broadcast_port() {
+    BROADCAST=$1
+
+    if [ -z "$BROADCAST" ];
+    then
+        echo "Broadcast name was not provided"
+        return 1
+    else
+        PORT=$(mysql_exec_silent "SELECT port FROM broadcasts WHERE name = '$BROADCAST'")
+        echo $(strip_cr "$PORT")
     fi
 }
 
@@ -390,21 +443,21 @@ db_get_stream_title() {
     fi
 }
 
-db_is_channel_free() {
+db_is_broadcast_free() {
     TIME=$1
     ID=$2
     EXCLUDE=$3
 
     if [[ -z "$TIME" || -z "$ID" ]];
     then
-        echo "Channel ID or time was not provided"
+        echo "Broadcast ID or time was not provided"
         return 1
     else
         if [ ! -z "$EXCLUDE" ];
         then
-            COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE STR_TO_DATE('$TIME','%d.%m.%Y %T') BETWEEN start_time AND end_time AND channel_id = '$ID' AND id != '$EXCLUDE'")
+            COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE STR_TO_DATE('$TIME','%d.%m.%Y %T') BETWEEN start_time AND end_time AND broadcast_id = '$ID' AND id != '$EXCLUDE'")
         else
-            COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE STR_TO_DATE('$TIME','%d.%m.%Y %T') BETWEEN start_time AND end_time AND channel_id = '$ID'")
+            COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE STR_TO_DATE('$TIME','%d.%m.%Y %T') BETWEEN start_time AND end_time AND broadcast_id = '$ID'")
         fi
         COUNT=$(strip_cr "$COUNT")
         if [ $COUNT -eq 0 ];
@@ -450,14 +503,14 @@ db_stream_collides_with_another() {
 
     if [[ -z "$START_TIME" || -z "$END_TIME" || -z "$ID" ]];
     then
-        echo "Channel ID or time was not provided"
+        echo "Broadcast ID or time was not provided"
         return 1
     else
         if [ ! -z "$EXCLUDE" ];
         then
-            COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE (start_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T') or end_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T')) AND channel_id = '$ID' AND id != '$EXCLUDE';")
+            COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE (start_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T') or end_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T')) AND broadcast_id = '$ID' AND id != '$EXCLUDE';")
         else
-            COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE (start_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T') or end_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T')) AND channel_id = '$ID';")
+            COUNT=$(mysql_exec_silent "SELECT count(*) FROM streams WHERE (start_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T') or end_time BETWEEN STR_TO_DATE('$START_TIME','%d.%m.%Y %T') AND STR_TO_DATE('$END_TIME','%d.%m.%Y %T')) AND broadcast_id = '$ID' AND id != '$EXCLUDE';")
         fi
         COUNT=$(strip_cr "$COUNT")
         if [ $COUNT -eq 0 ];
@@ -569,6 +622,25 @@ search_game() {
     if [ -z "$GAME_FOUND" ];
     then
         echo "[ERROR]: Game '$GAME' not found in database"
+        return 1
+    fi
+    return 0
+}
+
+search_broadcast() {
+    local BROADCAST=$1
+
+    if [ -z "$BROADCAST" ];
+    then
+        echo "[ERROR]: Broadcast name not provided"
+        return 1
+    fi
+
+    local BROADCAST_FOUND=$(mysql_exec_silent "SELECT name FROM broadcasts WHERE name = '$BROADCAST'")
+
+    if [ -z "$BROADCAST_FOUND" ];
+    then
+        echo "[ERROR]: Broadcast '$BROADCAST' not found in database"
         return 1
     fi
     return 0
@@ -687,24 +759,71 @@ twitch_refresh_tokens() {
 }
 
 twitch_update_broadcast_info() {
-    CHANNEL="$1"
+    BROADCAST="$1"
     GAME="$2"
     TITLE="$3"
 
-    if twitch_validate_access_token $CHANNEL;
+    if [ -z "$BROADCAST" ] || [ -z "$GAME" ] || [ -z "$TITLE" ];
     then
-
-        BROADCASTER_ID=$(twitch_get_broadcaster_id $CHANNEL)
-        TWITCH_ACCESS_TOKEN=$(db_get_channel_access_token $CHANNEL)
-        TWITCH_CLIENT_ID=$(db_get_channel_client_id $CHANNEL)
-        GAME_DISPLAY_NAME=$(db_get_game_display_name_with_name $GAME)
-        GAME_ID=$(twitch_get_game_id_with_display_name "$GAME_DISPLAY_NAME" $CHANNEL)
-
-        curl -X PATCH "https://api.twitch.tv/helix/channels?broadcaster_id=$BROADCASTER_ID" -H "Authorization: Bearer $TWITCH_ACCESS_TOKEN" -H "Client-Id: $TWITCH_CLIENT_ID" -H 'Content-Type: application/json' --data-raw "{\"game_id\":\"$GAME_ID\", \"title\":\"$TITLE\", \"broadcaster_language\":\"fi\"}"
-    else
-        echo "Twitch access key is not valid"
+        echo "Broadcast, game, or title was not provided"
         return 1
     fi
+
+    # Get broadcast ID
+    BROADCAST_ID=$(mysql_exec_silent "SELECT id FROM broadcasts WHERE name = '$BROADCAST'")
+    BROADCAST_ID=$(strip_cr "$BROADCAST_ID")
+
+    if [ -z "$BROADCAST_ID" ];
+    then
+        echo "Broadcast '$BROADCAST' not found"
+        return 1
+    fi
+
+    # Get all Twitch channels linked to this broadcast
+    TWITCH_CHANNELS=$(mysql_exec_silent "
+        SELECT c.name
+        FROM channels c
+        JOIN broadcast_channels bc ON bc.channel_id = c.id
+        WHERE bc.broadcast_id = $BROADCAST_ID
+        AND c.platform = 'twitch'
+        AND bc.enabled = TRUE
+    ")
+
+    if [ -z "$TWITCH_CHANNELS" ];
+    then
+        echo "No Twitch channels linked to broadcast '$BROADCAST'"
+        return 0
+    fi
+
+    # Update each Twitch channel
+    echo "$TWITCH_CHANNELS" | while read -r CHANNEL; do
+        CHANNEL=$(strip_cr "$CHANNEL")
+        if [ -z "$CHANNEL" ];
+        then
+            continue
+        fi
+
+        echo "Updating Twitch channel: $CHANNEL"
+
+        if twitch_validate_access_token $CHANNEL;
+        then
+            BROADCASTER_ID=$(twitch_get_broadcaster_id $CHANNEL)
+            TWITCH_ACCESS_TOKEN=$(db_get_channel_access_token $CHANNEL)
+            TWITCH_CLIENT_ID=$(db_get_channel_client_id $CHANNEL)
+            GAME_DISPLAY_NAME=$(db_get_game_display_name_with_name $GAME)
+            GAME_ID=$(twitch_get_game_id_with_display_name "$GAME_DISPLAY_NAME" $CHANNEL)
+
+            curl -X PATCH "https://api.twitch.tv/helix/channels?broadcaster_id=$BROADCASTER_ID" \
+                -H "Authorization: Bearer $TWITCH_ACCESS_TOKEN" \
+                -H "Client-Id: $TWITCH_CLIENT_ID" \
+                -H 'Content-Type: application/json' \
+                --data-raw "{\"game_id\":\"$GAME_ID\", \"title\":\"$TITLE\", \"broadcaster_language\":\"fi\"}"
+
+            echo "Updated title/game for Twitch channel: $CHANNEL"
+        else
+            echo "ERROR: Twitch access key is not valid for channel: $CHANNEL"
+        fi
+    done
 }
 
 twitch_validate_access_token() {

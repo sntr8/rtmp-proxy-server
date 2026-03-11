@@ -18,29 +18,29 @@ do
     fi
 
     CASTER=$(db_get_caster_with_stream_id $ID)
-    CHANNEL=$(db_get_channel_with_stream_id $ID)
+    BROADCAST=$(db_get_channel_with_stream_id $ID)
     COCASTER=$(db_get_cocaster_name_with_stream_id $ID)
     PROXYOPT=""
     echo "[$ID]: Cocaster: $COCASTER"
 
-    if [[ "$CHANNEL" != *-proxy ]];
+    if [[ "$BROADCAST" != *-proxy ]];
     then
         GAME=$(db_get_game_with_stream_id $ID)
         TITLE=$(db_get_stream_title $ID)
     fi
 
-    if [[ "$CHANNEL" == *-proxy ]];
+    if [[ "$BROADCAST" == *-proxy ]];
     then
         PROXYOPT="--proxy"
     fi
 
-    if MESSAGE=$(containermod --start --name nginx-rtmp --caster $CASTER --channel $CHANNEL --game $GAME $PROXYOPT;)
+    if MESSAGE=$(containermod --start --name nginx-rtmp --caster $CASTER --broadcast $BROADCAST --game $GAME $PROXYOPT;)
     then
         echo "[$ID] Container started"
 
-        if [[ "$CHANNEL" != *-proxy ]];
+        if [[ "$BROADCAST" != *-proxy ]];
         then
-            twitch_update_broadcast_info $CHANNEL "$GAME" "$TITLE"
+            twitch_update_broadcast_info $BROADCAST "$GAME" "$TITLE"
             echo "[$ID] Twitch title and game updated"
         fi
 
@@ -52,8 +52,8 @@ do
 
         if [ ! -z "$COCASTER" ];
         then
-          CCPROXY="$CHANNEL-proxy"
-          if MESSAGE=$(containermod --start --name nginx-rtmp --caster $COCASTER --channel $CCPROXY --proxy;)
+          CCPROXY="$BROADCAST-proxy"
+          if MESSAGE=$(containermod --start --name nginx-rtmp --caster $COCASTER --broadcast $CCPROXY --proxy;)
           then
             echo "[$ID] Co-caster proxy started for $COCASTER"
 
@@ -102,11 +102,11 @@ do
     ID=${ID%$'\r'}
     echo "[$ID] Staring processing"
     CASTER=$(db_get_caster_with_stream_id $ID)
-    CHANNEL=$(db_get_channel_with_stream_id $ID)
+    BROADCAST=$(db_get_channel_with_stream_id $ID)
     COCASTER=$(db_get_cocaster_name_with_stream_id $ID)
     PROXYOPT=""
 
-    if [[ "$CHANNEL" == *-proxy ]];
+    if [[ "$BROADCAST" == *-proxy ]];
     then
         PROXYOPT="--proxy"
     fi

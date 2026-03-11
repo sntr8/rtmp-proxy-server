@@ -1,0 +1,510 @@
+#!/bin/bash
+SOURCE_DIR="$(dirname "$0")"
+
+source "$SOURCE_DIR/functions/functions.sh"
+source /etc/profile
+
+SCRIPT_NAME=$SCRIPT_NAME
+OPERATION=$1
+require_operation "$OPERATION"
+
+case $OPERATION in
+    "--create")
+        NAME=$2
+        PORT=$3
+        DISPLAY_NAME=$4
+
+        if [ -z "$NAME" ];
+        then
+            echo "Broadcast name not provided. Try '$SCRIPT_NAME --help' for more information."
+            exit 1
+        fi
+
+        if [ -z "$PORT" ];
+        then
+            echo "Port not provided. Try '$SCRIPT_NAME --help' for more information."
+            exit 1
+        fi
+
+        if ! validate_alphanumeric "$NAME";
+        then
+            echo "[ERROR]: Invalid broadcast name. Only alphanumeric characters, dash, and underscore allowed."
+            exit 1
+        fi
+
+        if ! validate_numeric "$PORT";
+        then
+            echo "[ERROR]: Port must be a number."
+            exit 1
+        fi
+
+        # Check if broadcast already exists
+        EXISTING=$(mysql_exec_silent "SELECT name FROM broadcasts WHERE name = '$NAME'")
+        if [ -n "$EXISTING" ];
+        then
+            echo "ERROR: Broadcast '$NAME' already exists"
+            exit 1
+        fi
+
+        # Check if port is already in use
+        EXISTING_PORT=$(mysql_exec_silent "SELECT name FROM broadcasts WHERE port = $PORT")
+        if [ -n "$EXISTING_PORT" ];
+        then
+            echo "ERROR: Port $PORT is already in use by broadcast '$EXISTING_PORT'"
+            exit 1
+        fi
+
+        DISPLAY_NAME="${DISPLAY_NAME:-$NAME}"
+
+        if mysql_exec "INSERT INTO broadcasts (name, display_name, port) VALUES ('$NAME', '$DISPLAY_NAME', $PORT)";
+        then
+            echo "Broadcast '$NAME' created on port $PORT"
+            exit 0
+        else
+            echo "Failed to create broadcast"
+            exit 1
+        fi
+    ;;
+
+    "--list")
+        BROADCAST=$2
+
+        if [ -z "$BROADCAST" ];
+        then
+            # List all broadcasts with their channels
+            echo "Broadcasts:"
+            mysql_exec_interactive "
+                SELECT
+                    b.name AS Broadcast,
+                    b.port AS Port,
+                    b.display_name AS 'Display Name',
+                    COUNT(bc.channel_id) AS Channels
+                FROM broadcasts b
+                LEFT JOIN broadcast_channels bc ON b.id = bc.broadcast_id AND bc.enabled = TRUE
+                GROUP BY b.id, b.name, b.port, b.display_name
+                ORDER BY b.port"
+        else
+            # List specific broadcast with its channels
+            if ! validate_alphanumeric "$BROADCAST";
+            then
+                echo "[ERROR]: Invalid broadcast name."
+                exit 1
+            fi
+
+            BROADCAST_ID=$(mysql_exec_silent "SELECT id FROM broadcasts WHERE name = '$BROADCAST'")
+            if [ -z "$BROADCAST_ID" ];
+            then
+                echo "ERROR: Broadcast '$BROADCAST' not found"
+                exit 1
+            fi
+
+            BROADCAST_INFO=$(mysql_exec_silent "SELECT CONCAT(name, '|', port, '|', display_name) FROM broadcasts WHERE name = '$BROADCAST'")
+            IFS='|' read -r B_NAME B_PORT B_DISPLAY <<< "$BROADCAST_INFO"
+
+            echo "Broadcast: $B_NAME (port $B_PORT) - $B_DISPLAY"
+            echo ""
+            echo "Channels:"
+
+            mysql_exec_interactive "
+                SELECT
+                    bc.id AS ID,
+                    c.name AS Channel,
+                    c.platform AS Platform,
+                    c.stream_url AS URL,
+                    IF(bc.enabled, 'enabled', 'disabled') AS Status,
+                    bc.priority AS Priority
+                FROM broadcast_channels bc
+                JOIN channels c ON c.id = bc.channel_id
+                WHERE bc.broadcast_id = $BROADCAST_ID
+                ORDER BY bc.priority, bc.id"
+        fi
+    ;;
+
+    "--link")
+        BROADCAST=$2
+        CHANNEL=$3
+        PRIORITY=${4:-0}
+
+        if [ -z "$BROADCAST" ] || [ -z "$CHANNEL" ];
+        then
+            echo "Broadcast and channel names required. Try '$SCRIPT_NAME --help' for more information."
+            exit 1
+        fi
+
+        if ! validate_alphanumeric "$BROADCAST" || ! validate_alphanumeric "$CHANNEL";
+        then
+            echo "[ERROR]: Invalid broadcast or channel name."
+            exit 1
+        fi
+
+        # Get broadcast ID
+        BROADCAST_ID=$(mysql_exec_silent "SELECT id FROM broadcasts WHERE name = '$BROADCAST'")
+        if [ -z "$BROADCAST_ID" ];
+        then
+            echo "ERROR: Broadcast '$BROADCAST' not found"
+            exit 1
+        fi
+
+        # Get channel ID
+        CHANNEL_ID=$(mysql_exec_silent "SELECT id FROM channels WHERE name = '$CHANNEL'")
+        if [ -z "$CHANNEL_ID" ];
+        then
+            echo "ERROR: Channel '$CHANNEL' not found"
+            exit 1
+        fi
+
+        # Check if already linked
+        EXISTING=$(mysql_exec_silent "SELECT id FROM broadcast_channels WHERE broadcast_id = $BROADCAST_ID AND channel_id = $CHANNEL_ID")
+        if [ -n "$EXISTING" ];
+        then
+            echo "ERROR: Channel '$CHANNEL' is already linked to broadcast '$BROADCAST'"
+            exit 1
+        fi
+
+        if mysql_exec "INSERT INTO broadcast_channels (broadcast_id, channel_id, enabled, priority) VALUES ($BROADCAST_ID, $CHANNEL_ID, TRUE, $PRIORITY)";
+        then
+            echo "Channel '$CHANNEL' linked to broadcast '$BROADCAST'"
+            exit 0
+        else
+            echo "Failed to link channel"
+            exit 1
+        fi
+    ;;
+
+    "--unlink")
+        BROADCAST=$2
+        CHANNEL=$3
+
+        if [ -z "$BROADCAST" ] || [ -z "$CHANNEL" ];
+        then
+            echo "Broadcast and channel names required. Try '$SCRIPT_NAME --help' for more information."
+            exit 1
+        fi
+
+        if ! validate_alphanumeric "$BROADCAST" || ! validate_alphanumeric "$CHANNEL";
+        then
+            echo "[ERROR]: Invalid broadcast or channel name."
+            exit 1
+        fi
+
+        # Get broadcast ID
+        BROADCAST_ID=$(mysql_exec_silent "SELECT id FROM broadcasts WHERE name = '$BROADCAST'")
+        if [ -z "$BROADCAST_ID" ];
+        then
+            echo "ERROR: Broadcast '$BROADCAST' not found"
+            exit 1
+        fi
+
+        # Get channel ID
+        CHANNEL_ID=$(mysql_exec_silent "SELECT id FROM channels WHERE name = '$CHANNEL'")
+        if [ -z "$CHANNEL_ID" ];
+        then
+            echo "ERROR: Channel '$CHANNEL' not found"
+            exit 1
+        fi
+
+        if mysql_exec "DELETE FROM broadcast_channels WHERE broadcast_id = $BROADCAST_ID AND channel_id = $CHANNEL_ID";
+        then
+            echo "Channel '$CHANNEL' unlinked from broadcast '$BROADCAST'"
+            exit 0
+        else
+            echo "Failed to unlink channel"
+            exit 1
+        fi
+    ;;
+
+    "--enable")
+        BROADCAST=$2
+        CHANNEL=$3
+
+        if [ -z "$BROADCAST" ] || [ -z "$CHANNEL" ];
+        then
+            echo "Broadcast and channel names required. Try '$SCRIPT_NAME --help' for more information."
+            exit 1
+        fi
+
+        if ! validate_alphanumeric "$BROADCAST" || ! validate_alphanumeric "$CHANNEL";
+        then
+            echo "[ERROR]: Invalid broadcast or channel name."
+            exit 1
+        fi
+
+        # Get IDs
+        BROADCAST_ID=$(mysql_exec_silent "SELECT id FROM broadcasts WHERE name = '$BROADCAST'")
+        CHANNEL_ID=$(mysql_exec_silent "SELECT id FROM channels WHERE name = '$CHANNEL'")
+
+        if [ -z "$BROADCAST_ID" ] || [ -z "$CHANNEL_ID" ];
+        then
+            echo "ERROR: Broadcast or channel not found"
+            exit 1
+        fi
+
+        if mysql_exec "UPDATE broadcast_channels SET enabled = TRUE WHERE broadcast_id = $BROADCAST_ID AND channel_id = $CHANNEL_ID";
+        then
+            echo "Channel '$CHANNEL' enabled in broadcast '$BROADCAST'"
+            exit 0
+        else
+            echo "Failed to enable channel"
+            exit 1
+        fi
+    ;;
+
+    "--disable")
+        BROADCAST=$2
+        CHANNEL=$3
+
+        if [ -z "$BROADCAST" ] || [ -z "$CHANNEL" ];
+        then
+            echo "Broadcast and channel names required. Try '$SCRIPT_NAME --help' for more information."
+            exit 1
+        fi
+
+        if ! validate_alphanumeric "$BROADCAST" || ! validate_alphanumeric "$CHANNEL";
+        then
+            echo "[ERROR]: Invalid broadcast or channel name."
+            exit 1
+        fi
+
+        # Get IDs
+        BROADCAST_ID=$(mysql_exec_silent "SELECT id FROM broadcasts WHERE name = '$BROADCAST'")
+        CHANNEL_ID=$(mysql_exec_silent "SELECT id FROM channels WHERE name = '$CHANNEL'")
+
+        if [ -z "$BROADCAST_ID" ] || [ -z "$CHANNEL_ID" ];
+        then
+            echo "ERROR: Broadcast or channel not found"
+            exit 1
+        fi
+
+        if mysql_exec "UPDATE broadcast_channels SET enabled = FALSE WHERE broadcast_id = $BROADCAST_ID AND channel_id = $CHANNEL_ID";
+        then
+            echo "Channel '$CHANNEL' disabled in broadcast '$BROADCAST'"
+            exit 0
+        else
+            echo "Failed to disable channel"
+            exit 1
+        fi
+    ;;
+
+    "--remove")
+        BROADCAST=$2
+
+        if [ -z "$BROADCAST" ];
+        then
+            echo "Broadcast name not provided. Try '$SCRIPT_NAME --help' for more information."
+            exit 1
+        fi
+
+        if ! validate_alphanumeric "$BROADCAST";
+        then
+            echo "[ERROR]: Invalid broadcast name."
+            exit 1
+        fi
+
+        # Check if broadcast exists
+        BROADCAST_ID=$(mysql_exec_silent "SELECT id FROM broadcasts WHERE name = '$BROADCAST'")
+        if [ -z "$BROADCAST_ID" ];
+        then
+            echo "ERROR: Broadcast '$BROADCAST' not found"
+            exit 1
+        fi
+
+        # Check if broadcast has any active streams
+        ACTIVE_STREAMS=$(mysql_exec_silent "SELECT COUNT(*) FROM streams WHERE broadcast_id = $BROADCAST_ID AND live = TRUE")
+        ACTIVE_STREAMS=$(strip_cr "$ACTIVE_STREAMS")
+
+        if [ "$ACTIVE_STREAMS" -gt 0 ];
+        then
+            echo "ERROR: Cannot remove broadcast '$BROADCAST' - it has $ACTIVE_STREAMS active stream(s)"
+            exit 1
+        fi
+
+        if mysql_exec "DELETE FROM broadcasts WHERE name = '$BROADCAST'";
+        then
+            echo "Broadcast '$BROADCAST' removed (channel links automatically deleted)"
+            exit 0
+        else
+            echo "Failed to remove broadcast"
+            exit 1
+        fi
+    ;;
+
+    "--set")
+        BROADCAST=$2
+        KEY=$3
+        VALUE=$4
+
+        if [ -z "$BROADCAST" ] || [ -z "$KEY" ] || [ -z "$VALUE" ];
+        then
+            echo "Broadcast name, key, and value required. Try '$SCRIPT_NAME --help' for more information."
+            exit 1
+        fi
+
+        if ! validate_alphanumeric "$BROADCAST";
+        then
+            echo "[ERROR]: Invalid broadcast name."
+            exit 1
+        fi
+
+        # Check if broadcast exists
+        BROADCAST_ID=$(mysql_exec_silent "SELECT id FROM broadcasts WHERE name = '$BROADCAST'")
+        if [ -z "$BROADCAST_ID" ];
+        then
+            echo "ERROR: Broadcast '$BROADCAST' not found"
+            exit 1
+        fi
+
+        SAFE_VALUE=$(sanitize_sql_string "$VALUE")
+
+        case $KEY in
+            "display_name")
+                if mysql_exec "UPDATE broadcasts SET display_name = '$SAFE_VALUE' WHERE name = '$BROADCAST'";
+                then
+                    echo "Display name updated for broadcast '$BROADCAST'"
+                    exit 0
+                else
+                    echo "Failed to update display name"
+                    exit 1
+                fi
+            ;;
+            "port")
+                if ! validate_numeric "$VALUE";
+                then
+                    echo "[ERROR]: Port must be a number"
+                    exit 1
+                fi
+
+                # Check if port is available
+                EXISTING=$(mysql_exec_silent "SELECT name FROM broadcasts WHERE port = $VALUE AND name != '$BROADCAST'")
+                if [ -n "$EXISTING" ];
+                then
+                    echo "ERROR: Port $VALUE is already in use by broadcast '$EXISTING'"
+                    exit 1
+                fi
+
+                if mysql_exec "UPDATE broadcasts SET port = $VALUE WHERE name = '$BROADCAST'";
+                then
+                    echo "Port updated to $VALUE for broadcast '$BROADCAST'"
+                    exit 0
+                else
+                    echo "Failed to update port"
+                    exit 1
+                fi
+            ;;
+            *)
+                echo "Key not recognised. Allowed values are: display_name, port"
+                exit 1
+            ;;
+        esac
+    ;;
+
+    "--help")
+        echo "$SCRIPT_NAME -- Manage broadcasts and their channel links
+
+DESCRIPTION:
+  Broadcasts are RTMP ingress points with unique ports. Each broadcast can output
+  to multiple platform channels (Twitch, Instagram, Facebook, YouTube) in a
+  many-to-many relationship.
+
+USAGE:
+  $SCRIPT_NAME <operation> [parameters]
+
+OPERATIONS:
+
+  --create <name> <port> [display_name]
+    Create a new broadcast with a unique port.
+
+    Parameters:
+      - name:         Broadcast identifier (e.g., morning-show)
+      - port:         RTMP port (48001-48010 range recommended)
+      - display_name: Optional display name (defaults to name)
+
+    Usage: $SCRIPT_NAME --create morning-show 48001 \"Morning Show\"
+
+  --list [broadcast]
+    List all broadcasts, or details of a specific broadcast.
+
+    Usage: $SCRIPT_NAME --list                    # List all
+    Usage: $SCRIPT_NAME --list morning-show       # List specific broadcast
+
+  --link <broadcast> <channel> [priority]
+    Link a channel to a broadcast for multi-platform output.
+
+    Parameters:
+      - broadcast: Broadcast name
+      - channel:   Channel name (must exist, see channelmod)
+      - priority:  Optional output priority (default: 0)
+
+    Usage: $SCRIPT_NAME --link morning-show my_twitch
+    Usage: $SCRIPT_NAME --link morning-show my_instagram 1
+
+  --unlink <broadcast> <channel>
+    Remove channel link from broadcast.
+
+    Usage: $SCRIPT_NAME --unlink morning-show my_instagram
+
+  --enable <broadcast> <channel>
+    Enable a linked channel (without removing the link).
+
+    Usage: $SCRIPT_NAME --enable morning-show my_twitch
+
+  --disable <broadcast> <channel>
+    Temporarily disable a linked channel.
+
+    Usage: $SCRIPT_NAME --disable morning-show my_facebook
+
+  --remove <broadcast>
+    Remove a broadcast and all its channel links.
+    Fails if broadcast has active streams.
+
+    Usage: $SCRIPT_NAME --remove morning-show
+
+  --set <broadcast> <key> <value>
+    Update broadcast properties.
+
+    Parameters:
+      - key: display_name, port
+
+    Usage: $SCRIPT_NAME --set morning-show display_name \"New Name\"
+    Usage: $SCRIPT_NAME --set morning-show port 48005
+
+EXAMPLES:
+
+  # Create broadcasts
+  broadcastmod --create morning-show 48001 \"Morning Gaming\"
+  broadcastmod --create evening-show 48002
+
+  # Link channels to broadcasts
+  broadcastmod --link morning-show my_twitch
+  broadcastmod --link morning-show my_instagram
+  broadcastmod --link evening-show my_twitch
+  broadcastmod --link evening-show my_youtube
+
+  # Temporarily disable Instagram for morning show
+  broadcastmod --disable morning-show my_instagram
+
+  # List all broadcasts
+  broadcastmod --list
+
+  # List specific broadcast with channels
+  broadcastmod --list morning-show
+
+WORKFLOW:
+  1. Create channels with channelmod
+  2. Create broadcasts with broadcastmod --create
+  3. Link channels to broadcasts with broadcastmod --link
+  4. Start streaming with containermod --broadcast <name>
+
+NOTES:
+  - One channel can be linked to multiple broadcasts
+  - One broadcast can have multiple channels (multi-platform)
+  - Port ranges: 48001-48010 (regular), 48101-48110 (proxy)
+  - Removing a broadcast deletes all its channel links (CASCADE)
+"
+        exit 0
+    ;;
+
+    *)
+        echo "Option $OPERATION not recognised. Try '$SCRIPT_NAME --help' for more information"
+        exit 1
+    ;;
+esac

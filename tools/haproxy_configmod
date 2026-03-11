@@ -35,7 +35,7 @@ SESSION_ID=$(od -x /dev/urandom | head -1 | awk '{OFS="-"; print $2$3,$4,$5,$6,$
 case $OPERATION in
     "--add")
         CASTER=$2
-        CHANNEL=$3
+        BROADCAST=$3
 
         if [ -z "$CASTER" ];
         then
@@ -43,13 +43,13 @@ case $OPERATION in
             exit 1
         fi
 
-        if [ -z "$CHANNEL" ];
+        if [ -z "$BROADCAST" ];
         then
-            echo "[ERROR]: Channel is missing. Try '$SCRIPT_NAME --help' for more information"
+            echo "[ERROR]: Broadcast is missing. Try '$SCRIPT_NAME --help' for more information"
             exit 1
         fi
 
-        PORT=$(db_get_channel_port $CHANNEL)
+        PORT=$(db_get_broadcast_port $BROADCAST)
 
         add_lock "$HAPROXY_CFG_DIR"
 
@@ -76,7 +76,7 @@ case $OPERATION in
         fi
 
         # Replace placeholders in template
-        sed -i "s/<CHANNEL>/$CHANNEL/g" "/tmp/$SESSION_ID/haproxy-rtmp.cfg"
+        sed -i "s/<BROADCAST>/$BROADCAST/g" "/tmp/$SESSION_ID/haproxy-rtmp.cfg"
         sed -i "s/<CASTER>/$CASTER/g" "/tmp/$SESSION_ID/haproxy-rtmp.cfg"
         sed -i "s/<PORT>/$PORT/g" "/tmp/$SESSION_ID/haproxy-rtmp.cfg"
 
@@ -135,19 +135,19 @@ USAGE:
 
 OPERATIONS:
 
-  --add <caster> <channel>
+  --add <caster> <broadcast>
     Add a new RTMP routing configuration for a caster's container.
 
     Creates HAProxy frontend/backend configuration block:
-      - Frontend binds to channel's assigned port
+      - Frontend binds to broadcast's assigned port
       - Backend routes to nginx-rtmp-<caster> container on port 1935
       - Configuration wrapped in # ::<caster>::start and # ::<caster>::end markers
 
     Parameters:
-      - caster:  Caster nickname (e.g., JohnDoe)
-      - channel: Channel name (e.g., mainchannel, only1-proxy)
+      - caster:    Caster nickname (e.g., JohnDoe)
+      - broadcast: Broadcast name (e.g., morning-show, only1-proxy)
 
-    Usage: $SCRIPT_NAME --add JohnDoe mainchannel
+    Usage: $SCRIPT_NAME --add JohnDoe morning-show
     Usage: $SCRIPT_NAME --add JohnDoe only1-proxy
 
   --remove <caster>
@@ -168,7 +168,7 @@ CONFIGURATION DETAILS:
 
   Generated Config Example:
     # ::JohnDoe::start
-    frontend rtmp-mainchannel
+    frontend rtmp-morning-show
         bind *:48001
         mode tcp
         default_backend JohnDoe
@@ -186,7 +186,7 @@ CONFIGURATION DETAILS:
 EXAMPLES:
 
   # Add routing for regular stream container
-  haproxy_configmod --add JohnDoe mainchannel
+  haproxy_configmod --add JohnDoe morning-show
 
   # Add routing for proxy container
   haproxy_configmod --add AliceSmith only1-proxy
@@ -217,7 +217,7 @@ NOTES:
   - Lock file ensures only one modification at a time
   - Graceful reload preserves existing connections
   - Config changes are immediate after reload (no restart needed)
-  - Port assignment comes from channels table in database
+  - Port assignment comes from broadcasts table in database
 "
         exit 0
     ;;
