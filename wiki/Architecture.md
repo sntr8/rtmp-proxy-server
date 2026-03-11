@@ -35,7 +35,7 @@ Understanding how RTMP Proxy Server works under the hood.
      ▼          ▼           ▼          ▼
 ┌──────────────────────────────────────────┐
 │            nginx-http + php-fpm          │
-│         (auth.php, ads, API)             │
+│         (auth.php, ads carousel)         │
 └────────────────┬─────────────────────────┘
                  │
                  ▼
@@ -198,8 +198,7 @@ These containers run continuously and provide core services:
 - **Purpose:** HTTP server for authentication and ads
 - **Endpoints:**
   - `/rtmp/auth.php` - RTMP authentication (called by nginx-rtmp)
-  - `/ads/` - Advertisement rotation page
-  - `/ads/api/` - API endpoints for ad management
+  - `/ads/` - Advertisement carousel (rotating images for OBS browser source)
 - **Port:** 443 (HTTPS via HAProxy)
 
 #### **php-fpm**
@@ -443,23 +442,33 @@ FFmpeg relays start immediately when stream is published.
 
 2. **auth.php validates:**
 ```php
-// Query database
-SELECT id FROM casters
-WHERE nick = ? AND stream_key = ?
+// Extract base app name (remove -publish suffix if present)
+$baseApp = preg_replace('/-publish$/', '', $_POST["app"]);
 
-// If match found: HTTP 200
-// If no match: HTTP 403
+// Verify the stream_key belongs to the caster who owns this context
+SELECT COUNT(*) as count FROM casters
+WHERE active = true
+AND stream_key = ?        -- Match the stream key
+AND nick = ?              -- To the caster's nick (from app name)
+AND (internal = false OR ? LIKE '%-publish')  -- Check internal flag
+
+// If count > 0: HTTP 200 (authenticated)
+// If count = 0: HTTP 401 (unauthorized - key doesn't match nick or inactive)
 ```
 
 3. **nginx-rtmp action:**
    - 200 response: Stream accepted
-   - 403 response: Stream rejected, connection closed
+   - 401 response: Stream rejected, connection closed
+
+**Key security feature:** The stream_key must match the caster's nick in the app path. This prevents a caster with a valid stream_key from streaming to another caster's context.
 
 ### Security Features
 
-- **Stream keys:** Generated per caster (format: `<nick>-<random12chars>`)
-- **No Twitch key exposure:** Streamers never see actual Twitch channel keys
-- **Database-driven:** Easy to revoke access (delete caster from database)
+- **Stream keys:** Generated per caster
+- **Context enforcement:** Stream key must match the caster's nick in the app path
+- **Schedule-based access:** Casters can only stream when they have an active scheduled stream
+- **No platform key exposure:** Streamers never see actual platform channel keys
+- **Database-driven:** Easy to revoke access (delete caster from database or set `active = false`)
 - **Per-stream authentication:** Both `on_publish` and `on_play` hooks
 
 ## Network Architecture
