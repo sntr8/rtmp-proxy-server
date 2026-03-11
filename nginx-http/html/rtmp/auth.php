@@ -12,58 +12,46 @@ if ($conn->connect_error) {
     exit;
 }
 
-$namesql = "SELECT stream_key FROM casters WHERE active = true";
-$nameresult = $conn->query($namesql);
+// Extract base app name (remove -publish suffix if present)
+$baseApp = preg_replace('/-publish$/', '', $_POST["app"]);
 
-if (!$nameresult) {
+// Verify the stream_key belongs to the caster who owns this context
+$authsql = "SELECT COUNT(*) as count FROM casters
+            WHERE active = true
+            AND stream_key = ?
+            AND nick = ?
+            AND (internal = false OR ? LIKE '%-publish')";
+
+$stmt = $conn->prepare($authsql);
+
+if (!$stmt) {
     http_response_code(500);
     $conn->close();
     exit;
 }
 
-$expectedNames = [];
+$stmt->bind_param("sss", $_POST["name"], $baseApp, $_POST["app"]);
+$stmt->execute();
+$result = $stmt->get_result();
 
-while($row = mysqli_fetch_assoc($nameresult)) {
-    foreach ($row as $key => $value) {
-        $expectedNames[] = $value;
-    }
-
+if (!$result) {
+    http_response_code(500);
+    $stmt->close();
+    $conn->close();
+    exit;
 }
 
-$nameresult->close();
+$row = $result->fetch_assoc();
 
-if(!in_array($_POST["name"], $expectedNames)){
+if ($row['count'] == 0) {
     http_response_code(401);
+    $stmt->close();
     $conn->close();
     exit;
 }
 
-$appsql = "SELECT nick FROM casters WHERE active = true AND internal = false";
-$appresult = $conn->query($appsql);
-
-if (!$appresult) {
-    http_response_code(500);
-    $conn->close();
-    exit;
-}
-
-$expectedApps = [];
-
-while($row = mysqli_fetch_assoc($appresult)) {
-    foreach ($row as $key => $value) {
-        $expectedApps[] = $value;
-        $expectedApps[] = $value."-publish";
-    }
-
-}
-
-$appresult->close();
+$stmt->close();
 $conn->close();
-
-if(!in_array($_POST["app"], $expectedApps)){
-    http_response_code(404);
-    exit;
-}
 
 $expectedCalls = array("publish", "play", "update");
 
