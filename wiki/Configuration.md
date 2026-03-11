@@ -4,15 +4,32 @@ Comprehensive guide for configuring RTMP Proxy Server.
 
 ## Table of Contents
 
+- [Architecture Overview](#architecture-overview)
 - [Platform Configuration](#platform-configuration)
-- [Games Configuration](#games-configuration)
 - [Channels Configuration](#channels-configuration)
+- [Broadcasts Configuration](#broadcasts-configuration)
+- [Games Configuration](#games-configuration)
 - [Casters Configuration](#casters-configuration)
 - [Twitch API Tokens](#twitch-api-tokens)
+- [YouTube API Tokens](#youtube-api-tokens)
 - [Advertisements](#advertisements)
 - [Discord Notifications](#discord-notifications)
 - [HAProxy Configuration](#haproxy-configuration)
 - [Advanced Settings](#advanced-settings)
+
+## Architecture Overview
+
+The system uses a **many-to-many** relationship between broadcasts and channels:
+
+- **Channels**: Platform destinations (Twitch, Instagram, YouTube, Facebook) - reusable across broadcasts
+- **Broadcasts**: RTMP ingress points with ports where streamers connect
+- **Broadcast_Channels**: Junction table linking broadcasts to channels
+
+**Example workflow:**
+1. Create channels for your platforms (`my_twitch`, `my_instagram`, `my_youtube`)
+2. Create a broadcast with a port (`main-show` on port 48001)
+3. Link channels to the broadcast
+4. Streamers connect to port 48001, stream outputs to all linked channels
 
 ## Platform Configuration
 
@@ -27,12 +44,6 @@ RTMP Proxy Server supports streaming to multiple platforms with platform-specifi
 | **Facebook Live** | Manual | Requires stream key from Facebook |
 | **YouTube Live** | Manual | Requires stream key from YouTube |
 
-### Platform Settings
-
-Each channel in the database has a `platform` field that determines:
-- **Default RTMP ingest URL**
-- **Stream key handling**
-
 ### Default Platform URLs
 
 ```
@@ -42,34 +53,19 @@ Facebook:  rtmps://live-api-s.facebook.com:443/rtmp
 YouTube:   rtmp://a.rtmp.youtube.com/live2
 ```
 
-You can edit the platform URL later with command
+### Stream Key Management
 
-```bash
-channelmod --set <channel> url <url>
+| Platform | Stream Key Source | Auto-Fetch at Container Start |
+|----------|-------------------|-------------------------------|
+| **Twitch** | API (if credentials configured) or manual | ✅ Yes |
+| **YouTube** | API (if credentials configured) or manual | ✅ Yes |
+| **Instagram** | Manual only | ❌ No |
+| **Facebook** | Manual only | ❌ No |
 
-#For example
-channelmod --set myfb url rtmps://live-api-s.facebook.com:443/rtmp
-```
-
-### Starting a Stream to Non-Twitch Platforms
-
-For Instagram, Facebook, and YouTube, you must provide the stream key manually using `--key`:
-
-```bash
-# Instagram Live
-containermod --start --name nginx-rtmp --caster JohnDoe \
-  --channel myig --game pubg --key <instagram_stream_key>
-
-# Facebook Live
-containermod --start --name nginx-rtmp --caster JohnDoe \
-  --channel myfb --game csgo --key <facebook_stream_key>
-
-# YouTube Live
-containermod --start --name nginx-rtmp --caster JohnDoe \
-  --channel myyt --game lol --key <youtube_stream_key>
-```
-
-**Why manual keys?** Instagram, Facebook, and YouTube don't provide public APIs for automatic stream key retrieval like Twitch does.
+**Twitch with API credentials**: Stream key automatically fetched every container start
+**YouTube with API credentials**: Stream key automatically fetched every container start
+**Twitch/YouTube without API**: Uses manual `stream_key` from database
+**Instagram/Facebook**: Always uses manual `stream_key` from database
 
 ### Important Configuration Notes
 
@@ -182,78 +178,65 @@ CREATE TABLE games (
 
 ## Channels Configuration
 
-Channels represent Twitch channels where streams are published.
+Channels represent **platform destinations** where streams are published. Channels are reusable across multiple broadcasts.
 
-### Adding a Channel
+### Creating a Channel
 
-**Twitch Channel:**
+Use `channelmod` to create platform channels:
+
+**Twitch Channel with API credentials (recommended):**
 ```bash
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "INSERT INTO channels (name, platform, display_name, access_token, client_id, refresh_token, port, url)
-   VALUES (
-     'yourchannel',                        # Channel name (lowercase)
-     'twitch',                             # Platform
-     'YourChannel',                        # Display name (exact Twitch capitalization)
-     '$TWITCH_ACCESS_TOKEN',               # OAuth token
-     '$TWITCH_CLIENT_ID',                  # Client ID
-     '$TWITCH_REFRESH_TOKEN',              # Refresh token
-     48001,                                # RTMP port
-     'https://twitch.tv/yourchannel'       # Channel URL
-   )"
+cd tools
+./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
+./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
+./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
+./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
+./channelmod --set my_twitch display_name "YourTwitchChannel"
 ```
 
-**Instagram/Facebook/YouTube Channel:**
+**Twitch Channel with manual stream key:**
 ```bash
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "INSERT INTO channels (name, platform, display_name, port, url)
-   VALUES (
-     'myig',                                            # Channel name
-     'instagram',                                       # Platform
-     'My Instagram',                                    # Display name
-     48002,                                             # RTMP port (must be unique)
-     'rtmp://live-upload.instagram.com:80/rtmp'         # Platform RTMP URL
-   )"
+./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app live_123456789_abcdefg
+./channelmod --set my_twitch display_name "YourTwitchChannel"
 ```
 
-### Port Assignment
-
-**Regular channels (Twitch output):** 48001-48010
-- First channel: 48001
-- Second channel: 48002
-- Third channel: 48003
-- etc.
-
-**Proxy channels (internal only):** 48101-48110
-- First proxy: 48101
-- Second proxy: 48102
-- etc.
-
-**Important:** Each channel needs a unique port. Port determines HAProxy routing.
-
-### Adding Proxy Channels
-
-Proxy channels don't output to Twitch - used for internal relay or cocaster setups:
-
+**Instagram Channel:**
 ```bash
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "INSERT INTO channels (name, display_name, port, url)
-   VALUES ('only1-proxy', 'Proxy Channel 1', 48101, '')"
+./channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp
+./channelmod --set my_instagram stream_key "<instagram_stream_key>"
+./channelmod --set my_instagram display_name "My Instagram Live"
 ```
 
-Default proxy channels (automatically created by schema.sql):
-- `only1-proxy` through `only6-proxy`
+**Facebook Channel:**
+```bash
+./channelmod --create my_facebook facebook rtmps://live-api-s.facebook.com:443/rtmp
+./channelmod --set my_facebook stream_key "<facebook_stream_key>"
+./channelmod --set my_facebook display_name "My Facebook Live"
+```
+
+**YouTube Channel with API credentials (recommended):**
+```bash
+./channelmod --create my_youtube youtube rtmp://a.rtmp.youtube.com/live2
+./channelmod --set my_youtube client_id "$YOUTUBE_CLIENT_ID"
+./channelmod --set my_youtube client_secret "$YOUTUBE_CLIENT_SECRET"
+./channelmod --set my_youtube refresh_token "$YOUTUBE_REFRESH_TOKEN"
+./channelmod --set my_youtube display_name "My YouTube Channel"
+```
+
+**YouTube Channel with manual stream key:**
+```bash
+./channelmod --create my_youtube youtube rtmp://a.rtmp.youtube.com/live2 xxxx-xxxx-xxxx-xxxx
+./channelmod --set my_youtube display_name "My YouTube Channel"
+```
 
 ### Listing Channels
 
 ```bash
+cd tools
 ./channelmod --list
 ```
 
-Or directly query:
-```bash
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "SELECT name, display_name, port, url FROM channels"
-```
+Output shows all channels with their platform, stream URL, and display name.
 
 ### Updating Channel Settings
 
@@ -261,40 +244,186 @@ docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
 ./channelmod --set <channel_name> <field> <value>
 
 # Examples:
-./channelmod --set yourchannel display_name "YourNewName"
-./channelmod --set yourchannel url "https://twitch.tv/yournewname"
-./channelmod --set yourchannel platform instagram
-./channelmod --set myig url rtmp://live-upload.instagram.com:80/rtmp
+./channelmod --set my_twitch display_name "NewChannelName"
+./channelmod --set my_instagram stream_key "new_ig_stream_key"
+./channelmod --set my_youtube stream_url rtmp://b.rtmp.youtube.com/live2
 
-# Twitch-specific (API tokens)
-./channelmod --set yourchannel access_token "new_token_here"
-./channelmod --set yourchannel client_id "new_client_id"
-./channelmod --set yourchannel refresh_token "new_refresh_token"
+# API credentials (Twitch/YouTube)
+./channelmod --set my_twitch access_token "new_token_here"
+./channelmod --set my_twitch client_id "new_client_id"
+./channelmod --set my_twitch refresh_token "new_refresh_token"
+./channelmod --set my_youtube client_secret "new_client_secret"
 ```
 
-**Available fields**: `platform`, `display_name`, `url`, `access_token`, `client_id`, `refresh_token`
+**Available fields**: `platform`, `stream_url`, `stream_key`, `display_name`, `access_token`, `client_id`, `client_secret`, `refresh_token`
 
-See [Platform Configuration](#platform-configuration) for detailed multi-platform setup.
+### Removing a Channel
+
+```bash
+./channelmod --remove <channel_name>
+```
+
+**Warning**: Cannot remove channel if linked to broadcasts. Unlink first using `broadcastmod --unlink`.
+
+### Testing API Credentials
+
+**Twitch:**
+```bash
+./channelmod --test-tokens my_twitch
+```
+
+**YouTube:**
+```bash
+./channelmod --test-tokens my_youtube
+```
+
+### Auto-Fetching Stream Keys
+
+For channels with API credentials configured:
+
+**Twitch:**
+```bash
+./channelmod --auto-fetch-key my_twitch
+```
+
+**YouTube:**
+```bash
+./channelmod --auto-fetch-key my_youtube
+```
+
+Stream keys are automatically fetched at container start for channels with API credentials.
 
 ### Database Schema
 
 ```sql
 CREATE TABLE channels (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) UNIQUE NOT NULL,                              -- Channel identifier
-    platform ENUM('twitch', 'instagram', 'facebook', 'youtube')      -- Streaming platform
-        NOT NULL DEFAULT 'twitch',
-    display_name VARCHAR(255) NOT NULL,                             -- Display name
-    access_token TEXT,                                              -- OAuth access token (Twitch only)
-    client_id VARCHAR(255),                                         -- Twitch client ID
-    refresh_token TEXT,                                             -- OAuth refresh token (Twitch only)
-    port INT UNIQUE NOT NULL,                                       -- RTMP port
-    url VARCHAR(255) NOT NULL,                                      -- Platform RTMP URL
-    stream_key VARCHAR(255)                                         -- Stream key (optional)
+    name VARCHAR(255) UNIQUE NOT NULL,
+    platform ENUM('twitch', 'instagram', 'facebook', 'youtube') DEFAULT 'twitch',
+    stream_url VARCHAR(512),
+    stream_key VARCHAR(512),
+    display_name VARCHAR(255),
+    access_token TEXT,
+    client_id VARCHAR(255),
+    client_secret VARCHAR(512),
+    refresh_token TEXT
 );
 ```
 
-**Note**: The `platform` field determines encoding parameters and stream handling. Twitch channels use API tokens, while other platforms require manual stream keys.
+## Broadcasts Configuration
+
+Broadcasts represent **RTMP ingress points** where streamers connect. Each broadcast has a unique port and can output to multiple channels.
+
+### Creating a Broadcast
+
+```bash
+cd tools
+./broadcastmod --create <name> <port> [display_name]
+
+# Examples:
+./broadcastmod --create main-show 48001 "Main Show"
+./broadcastmod --create evening-cast 48002 "Evening Cast"
+./broadcastmod --create tournament 48003 "Tournament Stream"
+```
+
+### Port Assignment
+
+**Regular broadcasts:** 48001-48010
+**Proxy broadcasts:** 48101-48110 (internal relay, no platform output)
+
+**Important:** Each broadcast needs a unique port. Port determines HAProxy routing.
+
+### Linking Channels to Broadcasts
+
+```bash
+./broadcastmod --link <broadcast> <channel> [priority]
+
+# Examples:
+./broadcastmod --link main-show my_twitch 1
+./broadcastmod --link main-show my_instagram 2
+./broadcastmod --link main-show my_youtube 3
+
+# Result: main-show outputs to Twitch, Instagram, and YouTube simultaneously
+```
+
+**Priority**: Optional parameter for output order (lower = higher priority).
+
+### Unlinking Channels
+
+```bash
+./broadcastmod --unlink <broadcast> <channel>
+
+# Example:
+./broadcastmod --unlink main-show my_instagram
+```
+
+### Enabling/Disabling Channels
+
+Temporarily disable a channel without unlinking:
+
+```bash
+# Disable Instagram output without stopping stream
+./broadcastmod --disable main-show my_instagram
+
+# Re-enable later
+./broadcastmod --enable main-show my_instagram
+```
+
+### Listing Broadcasts
+
+```bash
+# List all broadcasts
+./broadcastmod --list
+
+# Show specific broadcast with linked channels
+./broadcastmod --list main-show
+```
+
+### Updating Broadcast Settings
+
+```bash
+./broadcastmod --set <broadcast> <key> <value>
+
+# Examples:
+./broadcastmod --set main-show display_name "Updated Main Show"
+./broadcastmod --set main-show port 48005
+```
+
+**Available keys**: `name`, `display_name`, `port`
+
+### Removing a Broadcast
+
+```bash
+./broadcastmod --remove <broadcast>
+```
+
+**Warning**: Cannot remove broadcast if:
+- Active streams are using it
+- Scheduled streams reference it
+
+### Database Schema
+
+```sql
+-- Broadcasts table
+CREATE TABLE broadcasts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    port INT UNIQUE NOT NULL,
+    display_name VARCHAR(255)
+);
+
+-- Junction table
+CREATE TABLE broadcast_channels (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    broadcast_id INT NOT NULL,
+    channel_id INT NOT NULL,
+    enabled TINYINT(1) DEFAULT 1,
+    priority INT DEFAULT 0,
+    FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE,
+    FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_broadcast_channel (broadcast_id, channel_id)
+);
+```
 
 ## Casters Configuration
 
@@ -437,7 +566,69 @@ Runs weekly on Sundays at 2 AM.
 
 ### Checking Token Status
 
-TODO!
+```bash
+./channelmod --test-tokens <channel_name>
+
+# Example:
+./channelmod --test-tokens my_twitch
+```
+
+## YouTube API Tokens
+
+YouTube OAuth2 credentials enable automatic stream key fetching.
+
+### Getting YouTube Credentials
+
+1. **Create OAuth2 app** in Google Cloud Console
+2. **Enable YouTube Data API v3**
+3. **Create OAuth2 credentials** (Desktop app or Web app)
+4. **Get authorization code** using OAuth2 flow
+5. **Exchange for refresh_token**
+
+### Required Scopes
+
+```
+https://www.googleapis.com/auth/youtube.readonly
+```
+
+### Setting YouTube Credentials
+
+```bash
+cd tools
+./channelmod --set my_youtube client_id "your_client_id.apps.googleusercontent.com"
+./channelmod --set my_youtube client_secret "your_client_secret"
+./channelmod --set my_youtube refresh_token "your_refresh_token"
+```
+
+### Testing YouTube Credentials
+
+```bash
+./channelmod --test-tokens my_youtube
+```
+
+### Auto-Fetching YouTube Stream Keys
+
+```bash
+./channelmod --auto-fetch-key my_youtube
+```
+
+**Automatic behavior**: When starting a container, YouTube stream keys are automatically fetched if:
+- Channel has `client_id`, `client_secret`, and `refresh_token` configured
+- Active YouTube live stream exists at studio.youtube.com
+
+**How it works**:
+- Fetches fresh 1-hour access token using refresh_token
+- Retrieves stream key from YouTube API
+- Uses immediately, then discards (access_token not stored)
+- Repeats every container start
+
+### Refreshing YouTube Credentials
+
+```bash
+./channelmod --refresh-tokens my_youtube
+```
+
+Verifies credentials are valid.
 
 ## Advertisements
 

@@ -120,7 +120,7 @@ case $OPERATION in
             exit 1
         fi
 
-        # Check if channel exists and is Twitch
+        # Check if channel exists
         PLATFORM=$(mysql_exec_silent "SELECT platform FROM channels WHERE name = '$CHANNEL'")
         if [ -z "$PLATFORM" ];
         then
@@ -128,18 +128,24 @@ case $OPERATION in
             exit 1
         fi
 
-        if [ "$PLATFORM" != "twitch" ];
+        if [ "$PLATFORM" = "youtube" ];
         then
-            echo "ERROR: Token refresh only supported for Twitch channels"
-            exit 1
-        fi
-
-        twitch_refresh_tokens $CHANNEL;
-
-        if [ $? -eq 0 ];
+            echo "YouTube tokens are always fetched fresh (1-hour expiry)"
+            echo "Testing if credentials can obtain fresh tokens..."
+            if youtube_check_credentials $CHANNEL;
+            then
+                echo "✓ YouTube credentials are valid"
+                exit 0
+            else
+                echo "✗ YouTube credentials are invalid"
+                exit 1
+            fi
+        elif [ "$PLATFORM" = "twitch" ];
         then
-            exit 0
+            twitch_refresh_tokens $CHANNEL
+            exit $?
         else
+            echo "ERROR: Token refresh only supported for Twitch and YouTube channels"
             exit 1
         fi
     ;;
@@ -189,6 +195,15 @@ case $OPERATION in
                     exit 0
                 else
                     echo "Client ID change failed"
+                fi
+            ;;
+            "client_secret")
+                if mysql_exec "UPDATE channels SET client_secret = '$SAFE_VALUE' WHERE name = '$CHANNEL'";
+                then
+                    echo "Client secret updated for channel $CHANNEL"
+                    exit 0
+                else
+                    echo "Client secret change failed"
                 fi
             ;;
             "refresh_token")
@@ -243,7 +258,7 @@ case $OPERATION in
                 fi
             ;;
             *)
-                echo "Key not recognised. Allowed values are: access_token, client_id, refresh_token, platform, stream_url, display_name, stream_key"
+                echo "Key not recognised. Allowed values are: access_token, client_id, client_secret, refresh_token, platform, stream_url, display_name, stream_key"
                 exit 1
             ;;
         esac
@@ -258,7 +273,7 @@ case $OPERATION in
             exit 1
         fi
 
-        # Check if channel exists and is Twitch
+        # Check if channel exists
         PLATFORM=$(mysql_exec_silent "SELECT platform FROM channels WHERE name = '$CHANNEL'")
         if [ -z "$PLATFORM" ];
         then
@@ -266,20 +281,18 @@ case $OPERATION in
             exit 1
         fi
 
-        if [ "$PLATFORM" != "twitch" ];
+        if [[ "$PLATFORM" != "twitch" && "$PLATFORM" != "youtube" ]];
         then
-            echo "ERROR: Token testing only supported for Twitch channels"
+            echo "ERROR: Token testing only supported for Twitch and YouTube channels"
             exit 1
         fi
 
-        twitch_check_accees_token $CHANNEL
-
-        if [ $? -eq 0 ];
+        if validate_platform_credentials $CHANNEL;
         then
-            echo "Tokens are valid for $CHANNEL"
+            echo "Credentials are valid for $CHANNEL ($PLATFORM)"
             exit 0
         else
-            echo "ERROR: Tokens did not validate for $CHANNEL"
+            echo "ERROR: Credentials are invalid for $CHANNEL ($PLATFORM)"
             exit 1
         fi
     ;;
@@ -293,7 +306,7 @@ case $OPERATION in
             exit 1
         fi
 
-        # Check if channel exists and is Twitch
+        # Check if channel exists
         PLATFORM=$(mysql_exec_silent "SELECT platform FROM channels WHERE name = '$CHANNEL'")
         if [ -z "$PLATFORM" ];
         then
@@ -301,28 +314,44 @@ case $OPERATION in
             exit 1
         fi
 
-        if [ "$PLATFORM" != "twitch" ];
+        if [[ "$PLATFORM" != "twitch" && "$PLATFORM" != "youtube" ]];
         then
-            echo "ERROR: Auto-fetch only supported for Twitch channels"
+            echo "ERROR: Auto-fetch only supported for Twitch and YouTube channels"
             exit 1
         fi
 
         # Check if channel has API credentials
-        ACCESS_TOKEN=$(mysql_exec_silent "SELECT access_token FROM channels WHERE name = '$CHANNEL'")
         CLIENT_ID=$(mysql_exec_silent "SELECT client_id FROM channels WHERE name = '$CHANNEL'")
 
-        if [ -z "$ACCESS_TOKEN" ] || [ -z "$CLIENT_ID" ];
+        if [ "$PLATFORM" = "youtube" ];
         then
-            echo "ERROR: Channel '$CHANNEL' is missing Twitch API credentials"
-            echo "Set them first with:"
-            echo "  channelmod --set $CHANNEL access_token <token>"
-            echo "  channelmod --set $CHANNEL client_id <client_id>"
-            echo "  channelmod --set $CHANNEL refresh_token <refresh_token>"
-            exit 1
+            CLIENT_SECRET=$(mysql_exec_silent "SELECT client_secret FROM channels WHERE name = '$CHANNEL'")
+            REFRESH_TOKEN=$(mysql_exec_silent "SELECT refresh_token FROM channels WHERE name = '$CHANNEL'")
+            if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ] || [ -z "$REFRESH_TOKEN" ];
+            then
+                echo "ERROR: Channel '$CHANNEL' is missing YouTube API credentials"
+                echo "Set them first with:"
+                echo "  channelmod --set $CHANNEL client_id <google_client_id>"
+                echo "  channelmod --set $CHANNEL client_secret <google_client_secret>"
+                echo "  channelmod --set $CHANNEL refresh_token <google_refresh_token>"
+                exit 1
+            fi
+        elif [ "$PLATFORM" = "twitch" ];
+        then
+            ACCESS_TOKEN=$(mysql_exec_silent "SELECT access_token FROM channels WHERE name = '$CHANNEL'")
+            if [ -z "$ACCESS_TOKEN" ] || [ -z "$CLIENT_ID" ];
+            then
+                echo "ERROR: Channel '$CHANNEL' is missing Twitch API credentials"
+                echo "Set them first with:"
+                echo "  channelmod --set $CHANNEL access_token <token>"
+                echo "  channelmod --set $CHANNEL client_id <client_id>"
+                echo "  channelmod --set $CHANNEL refresh_token <refresh_token>"
+                exit 1
+            fi
         fi
 
-        echo "Fetching stream key from Twitch API for $CHANNEL..."
-        STREAM_KEY=$(twitch_get_stream_key $CHANNEL)
+        echo "Fetching stream key from $PLATFORM API for $CHANNEL..."
+        STREAM_KEY=$(get_platform_stream_key $CHANNEL)
 
         if [ $? -eq 0 ] && [ ! -z "$STREAM_KEY" ] && [ "$STREAM_KEY" != "null" ];
         then
@@ -332,7 +361,7 @@ case $OPERATION in
             exit 0
         else
             echo "ERROR: Failed to fetch stream key for $CHANNEL"
-            echo "Make sure your Twitch API credentials are valid"
+            echo "Make sure your $PLATFORM API credentials are valid"
             echo "Try: channelmod --test-tokens $CHANNEL"
             exit 1
         fi
@@ -472,11 +501,12 @@ OPERATIONS:
     Update a specific value in the database for a channel.
 
     Parameters:
-      - key: access_token, client_id, refresh_token, platform, stream_url, display_name, stream_key
+      - key: access_token, client_id, client_secret, refresh_token, platform, stream_url, display_name, stream_key
 
     Usage: $SCRIPT_NAME --set my_twitch access_token abc123xyz789
     Usage: $SCRIPT_NAME --set my_ig stream_key new_instagram_key
     Usage: $SCRIPT_NAME --set my_twitch display_name \"My Main Twitch\"
+    Usage: $SCRIPT_NAME --set my_youtube client_secret <google_client_secret>
 
   --remove <channel>
     Remove a channel. Warns if channel is linked to broadcasts.
@@ -484,20 +514,24 @@ OPERATIONS:
     Usage: $SCRIPT_NAME --remove my_instagram
 
   --refresh-tokens <channel>
-    Manually trigger Twitch token refresh (Twitch channels only).
+    Manually trigger token refresh (Twitch/YouTube).
+    For YouTube, verifies credentials can obtain fresh tokens.
 
     Usage: $SCRIPT_NAME --refresh-tokens my_twitch
+    Usage: $SCRIPT_NAME --refresh-tokens my_youtube
 
   --test-tokens <channel>
-    Validate that a Twitch channel's API tokens are currently valid.
+    Validate that a channel's API credentials are valid (Twitch/YouTube).
 
     Usage: $SCRIPT_NAME --test-tokens my_twitch
+    Usage: $SCRIPT_NAME --test-tokens my_youtube
 
   --auto-fetch-key <channel>
-    Automatically fetch and store the stream key from Twitch API (Twitch only).
-    Requires channel to have access_token and client_id configured.
+    Automatically fetch and store the stream key from platform API (Twitch/YouTube).
+    Requires API credentials to be configured.
 
     Usage: $SCRIPT_NAME --auto-fetch-key my_twitch
+    Usage: $SCRIPT_NAME --auto-fetch-key my_youtube
 
 EXAMPLES:
 
@@ -511,14 +545,22 @@ EXAMPLES:
   # Or create Twitch channel with manual key
   channelmod --create my_twitch twitch rtmp://live.twitch.tv/app <stream_key>
 
+  # Create YouTube channel with API auto-fetch
+  channelmod --create my_youtube youtube rtmp://a.rtmp.youtube.com/live2
+  channelmod --set my_youtube client_id <google_client_id>
+  channelmod --set my_youtube client_secret <google_client_secret>
+  channelmod --set my_youtube refresh_token <google_refresh_token>
+  channelmod --test-tokens my_youtube      # Verify credentials
+  channelmod --auto-fetch-key my_youtube   # Fetch stream key from API
+
+  # Or create YouTube channel with manual key
+  channelmod --create my_youtube youtube rtmp://a.rtmp.youtube.com/live2 <yt_key>
+
   # Create Instagram channel with key
   channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp <ig_key>
 
   # Create Facebook channel
   channelmod --create my_facebook facebook rtmps://live-api-s.facebook.com:443/rtmp <fb_key>
-
-  # Create YouTube channel
-  channelmod --create my_youtube youtube rtmp://a.rtmp.youtube.com/live2 <yt_key>
 
   # List all channels
   channelmod --list
@@ -526,22 +568,32 @@ EXAMPLES:
   # Update stream key
   channelmod --set my_instagram stream_key new_key_here
 
-  # Test Twitch tokens
+  # Test platform tokens
   channelmod --test-tokens my_twitch
+  channelmod --test-tokens my_youtube
 
-  # Refresh Twitch tokens
+  # Refresh platform tokens
   channelmod --refresh-tokens my_twitch
+  channelmod --refresh-tokens my_youtube
 
 PLATFORM-SPECIFIC NOTES:
 
   Twitch:
-    - Can use API for automatic stream key fetching
-    - Requires access_token, client_id, refresh_token
-    - Stream keys are auto-fetched at container start if API credentials present
+    - OAuth2 with 60-day token expiry
+    - Requires: client_id, access_token, refresh_token
+    - Stream keys auto-fetched at container start if API credentials present
     - Use --auto-fetch-key to manually fetch and store key
-    - Tokens expire after ~60 days, use --refresh-tokens
+    - Use --refresh-tokens when tokens expire
 
-  Instagram/Facebook/YouTube:
+  YouTube:
+    - OAuth2 with 1-hour token expiry (fetched fresh each time)
+    - Requires: client_id, client_secret, refresh_token
+    - access_token NOT stored (too short-lived, fetched on-demand)
+    - Stream keys auto-fetched at container start
+    - Must create live stream at studio.youtube.com first
+    - Use --test-tokens to verify credentials
+
+  Instagram/Facebook:
     - Manual stream key required
     - Get keys from platform's live streaming dashboard
     - Keys may expire, update with --set

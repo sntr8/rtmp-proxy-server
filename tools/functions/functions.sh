@@ -186,6 +186,32 @@ db_get_channel_refresh_token() {
     fi
 }
 
+db_get_channel_client_secret() {
+    CHANNEL=$1
+
+    if [ -z "$CHANNEL" ];
+    then
+        echo "Channel was not provided"
+        return 1
+    else
+        CLIENT_SECRET=$(mysql_exec_silent "SELECT client_secret FROM channels WHERE name = '$CHANNEL'")
+        echo $(strip_cr "$CLIENT_SECRET")
+    fi
+}
+
+db_get_channel_platform() {
+    CHANNEL=$1
+
+    if [ -z "$CHANNEL" ];
+    then
+        echo "Channel was not provided"
+        return 1
+    else
+        PLATFORM=$(mysql_exec_silent "SELECT platform FROM channels WHERE name = '$CHANNEL'")
+        echo $(strip_cr "$PLATFORM")
+    fi
+}
+
 db_get_channel_port() {
     CHANNEL=$1
 
@@ -865,4 +891,154 @@ twitch_check_accees_token() {
     else
         return 1
     fi
+}
+
+# ============================================================================
+# YouTube API Functions
+# ============================================================================
+
+youtube_get_fresh_access_token() {
+    # Returns fresh access token WITHOUT storing it
+    # YouTube tokens expire in 1 hour - too short to store
+    CHANNEL=$1
+
+    if [ -z "$CHANNEL" ];
+    then
+        echo "Channel was not provided"
+        return 1
+    fi
+
+    CLIENT_ID=$(db_get_channel_client_id $CHANNEL)
+    CLIENT_SECRET=$(db_get_channel_client_secret $CHANNEL)
+    REFRESH_TOKEN=$(db_get_channel_refresh_token $CHANNEL)
+
+    if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ] || [ -z "$REFRESH_TOKEN" ];
+    then
+        echo "Missing YouTube API credentials"
+        return 1
+    fi
+
+    # Call YouTube OAuth2 token endpoint
+    RESULT=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d "client_id=$CLIENT_ID" \
+        -d "client_secret=$CLIENT_SECRET" \
+        -d "refresh_token=$REFRESH_TOKEN" \
+        -d "grant_type=refresh_token")
+
+    ACCESS_TOKEN=$(echo $RESULT | jq -r '.access_token')
+
+    if [ ! -z "$ACCESS_TOKEN" ] && [ "$ACCESS_TOKEN" != "null" ];
+    then
+        echo "$ACCESS_TOKEN"  # Return token WITHOUT storing
+        return 0
+    else
+        ERROR=$(echo $RESULT | jq -r '.error_description // .error')
+        echo "YouTube token refresh failed: $ERROR" >&2
+        return 1
+    fi
+}
+
+youtube_check_credentials() {
+    # Test if we can get a fresh access token
+    CHANNEL=$1
+
+    ACCESS_TOKEN=$(youtube_get_fresh_access_token $CHANNEL 2>/dev/null)
+
+    if [ $? -eq 0 ] && [ ! -z "$ACCESS_TOKEN" ];
+    then
+        # Validate token with Google OAuth2 API
+        RESPONSE=$(curl -s "https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=$ACCESS_TOKEN")
+        ERROR=$(echo $RESPONSE | jq -r '.error // empty')
+
+        if [ -z "$ERROR" ];
+        then
+            return 0  # Credentials valid
+        fi
+    fi
+
+    return 1  # Credentials invalid
+}
+
+youtube_get_stream_key() {
+    CHANNEL=$1
+
+    if [ -z "$CHANNEL" ];
+    then
+        echo "Channel was not provided"
+        return 1
+    fi
+
+    # Get fresh token (not from DB, fetch on-demand)
+    ACCESS_TOKEN=$(youtube_get_fresh_access_token $CHANNEL 2>/dev/null)
+
+    if [ $? -ne 0 ] || [ -z "$ACCESS_TOKEN" ];
+    then
+        echo "Failed to get YouTube access token"
+        return 1
+    fi
+
+    # Use token immediately to fetch stream key
+    RESULT=$(curl -s -X GET \
+        "https://www.googleapis.com/youtube/v3/liveStreams?part=cdn&mine=true" \
+        -H "Authorization: Bearer $ACCESS_TOKEN")
+
+    STREAM_KEY=$(echo $RESULT | jq -r '.items[0].cdn.ingestionInfo.streamName // empty')
+
+    if [ ! -z "$STREAM_KEY" ] && [ "$STREAM_KEY" != "null" ];
+    then
+        echo "$STREAM_KEY"
+        return 0
+    else
+        echo "No YouTube live stream found. Create one at studio.youtube.com"
+        return 1
+    fi
+
+    # Token is discarded after use (not saved to DB)
+}
+
+# ============================================================================
+# Platform-Agnostic Wrapper Functions
+# ============================================================================
+
+get_platform_stream_key() {
+    # Universal wrapper - detects platform and delegates
+    CHANNEL=$1
+    PLATFORM=$(db_get_channel_platform $CHANNEL)
+
+    case $PLATFORM in
+        "twitch")
+            twitch_get_stream_key $CHANNEL
+            return $?
+            ;;
+        "youtube")
+            youtube_get_stream_key $CHANNEL
+            return $?
+            ;;
+        *)
+            echo "Platform $PLATFORM does not support API stream key fetching"
+            return 1
+            ;;
+    esac
+}
+
+validate_platform_credentials() {
+    # Universal credential validator
+    CHANNEL=$1
+    PLATFORM=$(db_get_channel_platform $CHANNEL)
+
+    case $PLATFORM in
+        "twitch")
+            twitch_check_accees_token $CHANNEL
+            return $?
+            ;;
+        "youtube")
+            youtube_check_credentials $CHANNEL
+            return $?
+            ;;
+        *)
+            echo "Platform $PLATFORM does not support API credentials"
+            return 1
+            ;;
+    esac
 }

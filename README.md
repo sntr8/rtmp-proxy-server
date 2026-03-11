@@ -46,31 +46,41 @@ cd tools
 ./containermod --start --name mysql
 docker exec -i mysql mysql -uroot -p$MYSQL_ROOT_PASSWORD $MYSQL_DATABASE < ../mysql/db/schema.sql
 
-# 5. Add Twitch channel
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, port, url)
-   VALUES ('yourchannel', 'YourChannel', '$TWITCH_ACCESS_TOKEN', '$TWITCH_CLIENT_ID',
-   '$TWITCH_REFRESH_TOKEN', 48001, 'https://twitch.tv/yourchannel')"
+# 5. Add platform channels (destinations)
+# Twitch channel
+./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
+./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
+./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
+./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
 
-# 6. Start base infrastructure
+# Optional: Add other platforms
+./channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp
+
+# 6. Create broadcast (RTMP ingress point)
+./broadcastmod --create main-show 48001 "Main Show"
+./broadcastmod --link main-show my_twitch
+
+# 7. Start base infrastructure
 ./containermod --start --all
 
-# 7. Add streamers
+# 8. Add streamers
 ./castermod --add JohnDoe 123456789012345678
 
-# 8. Schedule streams
+# 9. Schedule streams
 ./streammod --add
 ```
 
 ### Usage
 
-Streamers connect to your proxy:
+Streamers connect to your broadcast:
 ```
 Server:      rtmp://stream.yourdomain.com:48001/JohnDoe/
 Stream Key:  JohnDoe-abc123def456
 ```
 
-Port mapping: **48001-48010** for regular streams, **48101-48110** for proxy-only channels.
+Port mapping: **48001-48010** for broadcasts, **48101-48110** for proxy broadcasts.
+
+The broadcast (port 48001) outputs to all linked channels (Twitch, Instagram, YouTube, etc.).
 
 ## Documentation
 
@@ -95,8 +105,9 @@ Comprehensive scripts in `tools/`:
 
 - **containermod** - Start/stop/restart containers
 - **streammod** - Schedule and manage streams
+- **broadcastmod** - Manage broadcasts (RTMP ingress points)
+- **channelmod** - Manage platform channels (Twitch, Instagram, YouTube, Facebook)
 - **castermod** - Add/remove/manage streamers
-- **channelmod** - Manage channels and platform configuration
 - **gamemod** - Add/list games
 - **haproxy_configmod** - Manage HAProxy routing
 - **discordmod** - Send Discord notifications

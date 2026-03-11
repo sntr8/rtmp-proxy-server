@@ -38,6 +38,7 @@ CREATE TABLE `channels` (
     `display_name` varchar(255),
     `access_token` varchar(255),
     `client_id` varchar(255),
+    `client_secret` varchar(512),
     `refresh_token` varchar(255),
     PRIMARY KEY (`id`)
 );

@@ -6,8 +6,9 @@ Complete reference for all management scripts in `tools/` directory.
 
 - [containermod](#containermod) - Container lifecycle management
 - [streammod](#streammod) - Stream scheduling
+- [broadcastmod](#broadcastmod) - Broadcast management
+- [channelmod](#channelmod) - Channel (platform) management
 - [castermod](#castermod) - Caster management
-- [channelmod](#channelmod) - Channel management
 - [gamemod](#gamemod) - Game configuration
 - [haproxy_configmod](#haproxy_configmod) - HAProxy routing
 - [discordmod](#discordmod) - Discord notifications
@@ -38,7 +39,7 @@ cd tools
 ./containermod --start --name <container>
 
 # Start stream container
-./containermod --start --name nginx-rtmp --caster <nick> --channel <channel> --game <game>
+./containermod --start --name nginx-rtmp --caster <nick> --broadcast <broadcast> --game <game>
 
 # Start proxy container
 ./containermod --start --name nginx-rtmp-proxy --caster <nick>
@@ -88,10 +89,10 @@ Starts: haproxy, mysql, nginx-http, php-fpm
 
 **Start stream for JohnDoe:**
 ```bash
-./containermod --start --name nginx-rtmp --caster JohnDoe --channel mainchannel --game csgo
+./containermod --start --name nginx-rtmp --caster JohnDoe --broadcast main-show --game csgo
 ```
 
-Creates `nginx-rtmp-JohnDoe` container configured for CS:GO delay.
+Creates `nginx-rtmp-JohnDoe` container configured for CS:GO delay, outputting to all channels linked to `main-show` broadcast.
 
 **Stop JohnDoe's stream:**
 ```bash
@@ -247,6 +248,151 @@ Allows team streams where multiple people contribute to one Twitch channel.
 
 ---
 
+## broadcastmod
+
+Manage broadcasts (RTMP ingress points) and their linked channels.
+
+### Usage
+
+```bash
+cd tools
+./broadcastmod [OPTIONS]
+```
+
+### Options
+
+#### Create Broadcast
+
+```bash
+./broadcastmod --create <name> <port> [display_name]
+```
+
+#### List Broadcasts
+
+```bash
+# List all broadcasts
+./broadcastmod --list
+
+# Show specific broadcast with linked channels
+./broadcastmod --list <broadcast>
+```
+
+#### Link Channel to Broadcast
+
+```bash
+./broadcastmod --link <broadcast> <channel> [priority]
+```
+
+#### Unlink Channel from Broadcast
+
+```bash
+./broadcastmod --unlink <broadcast> <channel>
+```
+
+#### Enable/Disable Channel
+
+```bash
+./broadcastmod --enable <broadcast> <channel>
+./broadcastmod --disable <broadcast> <channel>
+```
+
+#### Update Broadcast
+
+```bash
+./broadcastmod --set <broadcast> <key> <value>
+```
+
+#### Remove Broadcast
+
+```bash
+./broadcastmod --remove <broadcast>
+```
+
+### Examples
+
+**Create a broadcast:**
+```bash
+./broadcastmod --create main-show 48001 "Main Show"
+```
+
+**Link channels to broadcast:**
+```bash
+./broadcastmod --link main-show my_twitch 1
+./broadcastmod --link main-show my_instagram 2
+./broadcastmod --link main-show my_youtube 3
+```
+
+Now `main-show` outputs to Twitch, Instagram, and YouTube simultaneously.
+
+**List all broadcasts:**
+```bash
+./broadcastmod --list
+```
+
+Output:
+```
+ID | Name          | Port  | Display Name | Channels
+---+---------------+-------+--------------+----------
+1  | main-show     | 48001 | Main Show    | 3
+2  | evening-cast  | 48002 | Evening      | 2
+```
+
+**Show specific broadcast with channels:**
+```bash
+./broadcastmod --list main-show
+```
+
+Output:
+```
+Broadcast: main-show (port 48001)
+Display Name: Main Show
+
+Linked Channels:
+  1. my_twitch (twitch) - enabled, priority 1
+  2. my_instagram (instagram) - enabled, priority 2
+  3. my_youtube (youtube) - enabled, priority 3
+```
+
+**Temporarily disable Instagram:**
+```bash
+./broadcastmod --disable main-show my_instagram
+```
+
+Stream continues to Twitch and YouTube, but not Instagram.
+
+**Re-enable Instagram:**
+```bash
+./broadcastmod --enable main-show my_instagram
+```
+
+**Unlink a channel:**
+```bash
+./broadcastmod --unlink main-show my_youtube
+```
+
+**Update broadcast properties:**
+```bash
+./broadcastmod --set main-show display_name "Updated Main Show"
+./broadcastmod --set main-show port 48005
+```
+
+**Remove broadcast:**
+```bash
+./broadcastmod --remove main-show
+```
+
+**Warning**: Cannot remove if active streams exist.
+
+### Notes
+
+- Each broadcast has a unique port (48001-48010 for regular, 48101-48110 for proxy)
+- One broadcast can output to multiple channels (multi-platform streaming)
+- One channel can be linked to multiple broadcasts (reusable destinations)
+- Priority determines output order (lower = higher priority, optional)
+- Enabled flag allows temporary disable without unlinking
+
+---
+
 ## castermod
 
 Manage streamers (add, remove, list).
@@ -340,7 +486,7 @@ Shows RTMP server and stream key.
 
 ## channelmod
 
-Manage Twitch channels and API tokens.
+Manage platform channels (Twitch, Instagram, YouTube, Facebook) and API credentials.
 
 ### Usage
 
@@ -350,6 +496,14 @@ cd tools
 ```
 
 ### Options
+
+#### Create Channel
+
+```bash
+./channelmod --create <name> <platform> <stream_url> [stream_key]
+```
+
+Platforms: `twitch`, `instagram`, `facebook`, `youtube`
 
 #### List Channels
 
@@ -364,25 +518,68 @@ cd tools
 ```
 
 Fields:
+- `platform` - Platform type (twitch, instagram, facebook, youtube)
+- `stream_url` - Platform RTMP URL
+- `stream_key` - Manual stream key
 - `display_name` - Display name
-- `access_token` - OAuth access token
-- `refresh_token` - OAuth refresh token
-- `client_id` - Twitch client ID
-- `port` - RTMP port
-- `url` - Twitch URL
-- `access_token_expires` - Token expiry (YYYY-MM-DD HH:MM:SS)
+- `access_token` - OAuth access token (Twitch/YouTube)
+- `client_id` - OAuth client ID (Twitch/YouTube)
+- `client_secret` - OAuth client secret (YouTube only)
+- `refresh_token` - OAuth refresh token (Twitch/YouTube)
 
 #### Refresh Tokens
 
 ```bash
-# Refresh specific channel
+# Refresh specific channel (Twitch/YouTube)
 ./channelmod --refresh-tokens <channel>
+```
 
-# Refresh all channels
-./channelmod --refresh-tokens-all
+#### Test API Credentials
+
+```bash
+./channelmod --test-tokens <channel>
+```
+
+#### Auto-Fetch Stream Key
+
+```bash
+./channelmod --auto-fetch-key <channel>
+```
+
+For Twitch/YouTube channels with API credentials.
+
+#### Remove Channel
+
+```bash
+./channelmod --remove <channel>
 ```
 
 ### Examples
+
+**Create Twitch channel with API:**
+```bash
+./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
+./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
+./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
+./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
+./channelmod --set my_twitch display_name "MyTwitchChannel"
+```
+
+**Create Instagram channel:**
+```bash
+./channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp
+./channelmod --set my_instagram stream_key "<instagram_key>"
+./channelmod --set my_instagram display_name "My Instagram"
+```
+
+**Create YouTube channel with API:**
+```bash
+./channelmod --create my_youtube youtube rtmp://a.rtmp.youtube.com/live2
+./channelmod --set my_youtube client_id "$YOUTUBE_CLIENT_ID"
+./channelmod --set my_youtube client_secret "$YOUTUBE_CLIENT_SECRET"
+./channelmod --set my_youtube refresh_token "$YOUTUBE_REFRESH_TOKEN"
+./channelmod --set my_youtube display_name "My YouTube"
+```
 
 **List all channels:**
 ```bash
@@ -391,56 +588,62 @@ Fields:
 
 Output:
 ```
-Name            | Display Name | Port  | URL
-----------------+--------------+-------+-----------------------------
-mainchannel     | MainChannel  | 48001 | https://twitch.tv/mainchannel
-secondchannel   | SecondChan   | 48002 | https://twitch.tv/secondchan
-only1-proxy     | Proxy 1      | 48101 |
+Name          | Platform  | Stream URL                                      | Display Name
+--------------+-----------+-------------------------------------------------+--------------
+my_twitch     | twitch    | rtmp://live.twitch.tv/app                       | MyTwitchChannel
+my_instagram  | instagram | rtmp://live-upload.instagram.com:80/rtmp        | My Instagram
+my_youtube    | youtube   | rtmp://a.rtmp.youtube.com/live2                 | My YouTube
 ```
 
-**Update access token:**
+**Update stream key:**
 ```bash
-./channelmod --set mainchannel access_token "new_token_here"
+./channelmod --set my_instagram stream_key "new_instagram_key_here"
 ```
 
-**Update display name:**
+**Test Twitch credentials:**
 ```bash
-./channelmod --set mainchannel display_name "NewChannelName"
+./channelmod --test-tokens my_twitch
 ```
 
-**Refresh tokens:**
+**Auto-fetch Twitch stream key:**
 ```bash
-./channelmod --refresh-tokens mainchannel
+./channelmod --auto-fetch-key my_twitch
 ```
 
-Uses refresh token to get new access token from Twitch API.
-
-**Update token expiry:**
+**Refresh Twitch tokens:**
 ```bash
-./channelmod --set mainchannel access_token_expires "2026-06-01 00:00:00"
+./channelmod --refresh-tokens my_twitch
 ```
+
+**Remove channel:**
+```bash
+./channelmod --remove my_instagram
+```
+
+**Warning**: Cannot remove if linked to broadcasts.
 
 ### Token Management
 
-Tokens expire after ~60 days. Refresh before expiry:
+**Twitch**: Tokens expire after ~60 days
+**YouTube**: Refresh tokens don't expire, but access tokens are fetched fresh each use
 
 **Manual refresh:**
 ```bash
-./channelmod --refresh-tokens mainchannel
+./channelmod --refresh-tokens my_twitch
 ```
 
 **Automated refresh (crontab):**
 ```cron
-0 2 * * 0 /path/to/tools/channelmod --refresh-tokens-all >> /var/log/token-refresh.log 2>&1
+0 2 * * 0 /path/to/tools/channelmod --refresh-tokens my_twitch >> /var/log/token-refresh.log 2>&1
 ```
 
-Runs weekly on Sundays at 2 AM.
+### Auto-Fetch Behavior
 
-**Check expiry:**
-```bash
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "SELECT name, access_token_expires FROM channels WHERE name NOT LIKE '%proxy%'"
-```
+**At container start**, stream keys are automatically fetched for:
+- **Twitch channels** with `access_token`, `client_id`, `refresh_token`
+- **YouTube channels** with `client_id`, `client_secret`, `refresh_token`
+
+Channels without API credentials use manual `stream_key` from database.
 
 ---
 
@@ -748,20 +951,34 @@ Immediately checks and processes schedules.
 cd tools
 ./gamemod --add csgo "Counter-Strike: Global Offensive" "CS:GO" 480
 
-# 2. Add caster
+# 2. Create channels (platform destinations)
+./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
+./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
+./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
+./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
+
+./channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp
+./channelmod --set my_instagram stream_key "<instagram_key>"
+
+# 3. Create broadcast and link channels
+./broadcastmod --create main-show 48001 "Main Show"
+./broadcastmod --link main-show my_twitch
+./broadcastmod --link main-show my_instagram
+
+# 4. Add caster
 ./castermod --add JohnDoe 123456789012345678
 
-# 3. Schedule stream
+# 5. Schedule stream
 ./streammod --add
-# Select: JohnDoe, mainchannel, csgo
+# Select: JohnDoe, main-show, csgo
 # Start: 10.03.2026 18:00
 # End: 10.03.2026 22:00
 
-# 4. Verify schedule
+# 6. Verify schedule
 ./streammod --upcoming
 
-# 5. Wait for cron or start manually
-./containermod --start --name nginx-rtmp --caster JohnDoe --channel mainchannel --game csgo
+# 7. Wait for cron or start manually
+./containermod --start --name nginx-rtmp --caster JohnDoe --broadcast main-show --game csgo
 ```
 
 ### Emergency Stop

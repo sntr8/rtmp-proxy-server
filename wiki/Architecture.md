@@ -23,6 +23,14 @@ Understanding how RTMP Proxy Server works under the hood.
 │         │ │        │ │Mike    │ │Sara    │
 └────┬────┘ └───┬────┘ └───┬────┘ └───┬────┘
      │          │           │          │
+     │ Multi-platform FFmpeg output (per linked channel)
+     │          │           │          │
+     ▼          ▼           ▼          ▼
+   Twitch   Instagram   YouTube   Facebook
+   Twitch   YouTube     Twitch    (etc.)
+   (etc.)   (etc.)      (etc.)
+
+     │          │           │          │
      │ auth     │ auth      │ auth     │ auth
      ▼          ▼           ▼          ▼
 ┌──────────────────────────────────────────┐
@@ -35,6 +43,128 @@ Understanding how RTMP Proxy Server works under the hood.
          │    MySQL     │
          │  (database)  │
          └──────────────┘
+```
+
+## Many-to-Many Broadcast Architecture
+
+### Conceptual Model
+
+The system uses a **many-to-many** relationship between broadcasts and channels:
+
+```
+┌─────────────┐         ┌──────────────────┐         ┌─────────────┐
+│  Broadcasts │         │ Broadcast_       │         │  Channels   │
+│             │         │ Channels         │         │             │
+│  (Ingress)  │ ─────── │  (Junction)      │ ─────── │(Platforms)  │
+└─────────────┘         └──────────────────┘         └─────────────┘
+│                                                     │
+│ - main-show (port 48001)                           │ - my_twitch
+│ - evening-cast (port 48002)                        │ - my_instagram
+│ - tournament (port 48003)                          │ - my_youtube
+│                                                     │ - my_facebook
+```
+
+### Key Concepts
+
+- **Channel**: A platform destination (reusable across broadcasts)
+  - Example: `my_twitch`, `my_instagram`, `my_youtube`
+  - Contains: platform type, stream URL, stream key, API credentials
+  - One channel can be used in multiple broadcasts
+
+- **Broadcast**: An RTMP ingress point with a port
+  - Example: `main-show` on port 48001
+  - Streamers connect to the broadcast port
+  - One broadcast outputs to one or more channels
+
+- **Broadcast_Channels**: Links channels to broadcasts
+  - Junction table with enabled/priority flags
+  - Allows enabling/disabling specific outputs without stopping stream
+
+### Examples
+
+**Scenario 1: Multi-platform streaming**
+```
+Broadcast: main-show (port 48001)
+  ├─ my_twitch (enabled)
+  ├─ my_instagram (enabled)
+  └─ my_youtube (enabled)
+→ Streamer connects to port 48001, outputs to all 3 platforms
+```
+
+**Scenario 2: Reusable channels**
+```
+Broadcast: morning-show (port 48001)
+  ├─ my_twitch (enabled)
+  └─ my_instagram (enabled)
+
+Broadcast: evening-show (port 48002)
+  ├─ my_twitch (enabled)
+  └─ my_facebook (enabled)
+
+→ my_twitch channel is reused across both broadcasts
+```
+
+**Scenario 3: Different platform combinations**
+```
+Broadcast: main-event (port 48001)
+  ├─ my_twitch (enabled)
+  ├─ my_instagram (enabled)
+  ├─ my_youtube (enabled)
+  └─ my_facebook (enabled)
+→ Stream to ALL platforms simultaneously
+
+Broadcast: test-stream (port 48002)
+  └─ my_twitch (enabled)
+→ Stream to Twitch only for testing
+```
+
+### Database Schema
+
+```sql
+-- Platform destinations (reusable)
+CREATE TABLE channels (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    platform ENUM('twitch', 'instagram', 'facebook', 'youtube') DEFAULT 'twitch',
+    stream_url VARCHAR(512),
+    stream_key VARCHAR(512),
+    display_name VARCHAR(255),
+    access_token TEXT,
+    client_id VARCHAR(255),
+    client_secret VARCHAR(512),
+    refresh_token TEXT
+);
+
+-- RTMP ingress points
+CREATE TABLE broadcasts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) UNIQUE NOT NULL,
+    port INT UNIQUE NOT NULL,
+    display_name VARCHAR(255)
+);
+
+-- Many-to-many junction
+CREATE TABLE broadcast_channels (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    broadcast_id INT NOT NULL,
+    channel_id INT NOT NULL,
+    enabled TINYINT(1) DEFAULT 1,
+    priority INT DEFAULT 0,
+    FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE,
+    FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_broadcast_channel (broadcast_id, channel_id)
+);
+
+-- Scheduled streams now reference broadcasts
+CREATE TABLE streams (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    caster_id INT NOT NULL,
+    broadcast_id INT NOT NULL,  -- Changed from channel_id
+    game_id INT NOT NULL,
+    start_time DATETIME NOT NULL,
+    end_time DATETIME NOT NULL,
+    FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id)
+);
 ```
 
 ## Container Architecture
@@ -57,7 +187,9 @@ These containers run continuously and provide core services:
 - **Purpose:** Database for all service data
 - **Tables:**
   - `casters` - Streamers with authentication credentials
-  - `channels` - Twitch channels with API tokens
+  - `channels` - Platform destinations (Twitch, Instagram, YouTube, Facebook)
+  - `broadcasts` - RTMP ingress points with ports
+  - `broadcast_channels` - Many-to-many junction table
   - `games` - Games with delay settings
   - `streams` - Scheduled streams
 - **Persistence:** Data stored in Docker volume
@@ -105,11 +237,11 @@ Created and destroyed automatically based on schedules:
 
 **The Challenge:** RTMP application names (e.g., `/JohnDoe/`) are embedded in the Layer 7 protocol handshake. HAProxy operates at Layer 4 (TCP mode) and cannot parse these application names for routing decisions.
 
-**The Solution:** Use dedicated ports per channel. HAProxy routes based on destination port, which is a Layer 4 decision.
+**The Solution:** Use dedicated ports per broadcast. HAProxy routes based on destination port, which is a Layer 4 decision.
 
 **Port Assignment:**
-- **48001-48010:** Regular stream channels (output to Twitch)
-- **48101-48110:** Proxy channels (internal relay only)
+- **48001-48010:** Regular broadcasts (output to platform channels)
+- **48101-48110:** Proxy broadcasts (internal relay only)
 
 ### Routing Flow
 
@@ -127,8 +259,11 @@ Created and destroyed automatically based on schedules:
 
 5. **Stream relay:**
    - If authenticated, stream is accepted
+   - Container queries database for all channels linked to the broadcast
    - For delay games: Record to `/opt/rtmp/workdir/stream-<timestamp>.flv`
-   - For no-delay games: Direct exec_push to Twitch via FFmpeg
+   - For no-delay games: Generate multiple exec_push FFmpeg commands (one per linked channel)
+   - Each platform gets its own FFmpeg process with platform-specific settings
+   - Separate log files per platform: `ffmpeg-twitch.log`, `ffmpeg-instagram.log`, etc.
 
 ### HAProxy Configuration Structure
 
@@ -184,22 +319,45 @@ backend JohnDoe
 
 Database configuration:
 ```sql
-SELECT name, port FROM channels;
-+------------------+-------+
-| name             | port  |
-+------------------+-------+
-| mainchannel      | 48001 |
-| secondchannel    | 48002 |
-| tournamentchannel| 48003 |
-| only1-proxy      | 48101 |
-| only2-proxy      | 48102 |
-+------------------+-------+
+-- Broadcasts (RTMP ingress)
+SELECT name, port FROM broadcasts;
++--------------+-------+
+| name         | port  |
++--------------+-------+
+| main-show    | 48001 |
+| evening-cast | 48002 |
+| tournament   | 48003 |
+| proxy-1      | 48101 |
++--------------+-------+
+
+-- Channels (Platform destinations)
+SELECT name, platform FROM channels;
++--------------+-----------+
+| name         | platform  |
++--------------+-----------+
+| my_twitch    | twitch    |
+| my_instagram | instagram |
+| my_youtube   | youtube   |
++--------------+-----------+
+
+-- Linked channels for main-show broadcast
+SELECT c.name, c.platform
+FROM broadcast_channels bc
+JOIN channels c ON bc.channel_id = c.id
+JOIN broadcasts b ON bc.broadcast_id = b.id
+WHERE b.name = 'main-show';
++--------------+-----------+
+| name         | platform  |
++--------------+-----------+
+| my_twitch    | twitch    |
+| my_instagram | instagram |
++--------------+-----------+
 ```
 
 Stream routing:
-- JohnDoe streams to `mainchannel` → Port 48001 → nginx-rtmp-JohnDoe (relays to Twitch)
-- JaneDoe streams to `secondchannel` → Port 48002 → nginx-rtmp-JaneDoe (relays to Twitch)
-- Mike streams to `only1-proxy` → Port 48101 → nginx-rtmp-proxy-Mike (internal only)
+- JohnDoe streams to `main-show` → Port 48001 → nginx-rtmp-JohnDoe → Outputs to my_twitch + my_instagram
+- JaneDoe streams to `evening-cast` → Port 48002 → nginx-rtmp-JaneDoe → Outputs to linked channels
+- Mike streams to `proxy-1` → Port 48101 → nginx-rtmp-proxy-Mike (internal only, no platform output)
 
 ## Stream Delay Implementation
 
@@ -260,12 +418,30 @@ nginx-rtmp configuration (`nginx_proxy.conf.template`):
 application ${CASTER} {
     live on;
     record off;  # No recording
-    exec_push /usr/bin/ffmpeg -re -rtmp_live live -i rtmp://127.0.0.1/${app}/${name}
-              -codec copy -f flv rtmp://live.twitch.tv/app/${TWITCH_STREAM_KEY};
+
+    # Multiple exec_push lines generated dynamically (one per linked channel)
+    # Example for broadcast linked to Twitch + Instagram:
+
+    exec_push /usr/bin/ffmpeg -loglevel warning -re -rtmp_live live
+              -i rtmp://127.0.0.1/${app}/${name}
+              -codec copy -f flv rtmp://live.twitch.tv/app/live_123456789_abc
+              2>>/opt/nginx/logs/ffmpeg-twitch.log;
+
+    exec_push /usr/bin/ffmpeg -loglevel warning -re -rtmp_live live
+              -i rtmp://127.0.0.1/${app}/${name}
+              -codec copy -f flv rtmp://live-upload.instagram.com:80/rtmp/ig_key_here
+              2>>/opt/nginx/logs/ffmpeg-instagram.log;
 }
 ```
 
-FFmpeg relay starts immediately when stream is published.
+**How it works:**
+- `entrypoint.sh` parses OUTPUTS environment variable at container start
+- Generates one `exec_push` line per linked channel
+- Each FFmpeg process reads the same input stream
+- Separate logs per platform for debugging
+- All use passthrough encoding (`-codec copy`) for efficiency
+
+FFmpeg relays start immediately when stream is published.
 
 ## Authentication System
 
@@ -323,25 +499,40 @@ All other containers are isolated on internal network.
 
 ### Current Limits
 
-- **Channels:** 20 total (10 regular + 10 proxy)
+- **Broadcasts:** 20 total (10 regular + 10 proxy)
+- **Channels (platforms):** Unlimited (database-driven, no port constraints)
 - **Concurrent streams:** Limited by server resources (CPU, RAM, bandwidth)
 - **Database:** MySQL handles thousands of scheduled streams easily
 
+### Many-to-Many Flexibility
+
+- One channel (e.g., `my_twitch`) can be reused across multiple broadcasts
+- One broadcast can output to multiple channels simultaneously
+- Mix and match platforms per broadcast:
+  - Morning show → Twitch + Instagram
+  - Evening show → Twitch + YouTube
+  - Special event → Twitch + Instagram + YouTube + Facebook
+
 ### Scaling Up
 
-**More channels:**
+**More broadcasts:**
 - Extend port range (48011-48020, etc.)
 - Add ports to HAProxy and firewall
-- Update channel database entries
+- Create broadcasts with new ports
+
+**More channels:**
+- No limit - just create them in database
+- Channels are reusable across broadcasts
 
 **More concurrent streams:**
 - Increase server resources
 - Each nginx-rtmp container uses ~100-200MB RAM + CPU for FFmpeg
-- Bandwidth: ~5 Mbps upload per stream
+- Bandwidth: ~5 Mbps upload per stream × number of platforms
+- Example: 3-platform broadcast needs ~15 Mbps upload
 
 **Horizontal scaling:**
-- Run multiple servers, each with own channels
-- Use external MySQL server shared across servers
+- Run multiple servers, each with own broadcasts
+- Share channel definitions via external MySQL server
 - Load balance HTTPS, but RTMP is direct per-server (port-based)
 
 ## Alternative Architectures (Not Implemented)

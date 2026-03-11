@@ -70,24 +70,29 @@ Depends on server resources:
 3. Disk I/O (if using delay/recording)
 4. RAM
 
-### How many channels can I add?
+### How many broadcasts can I add?
 
 **Current limits:**
-- Regular channels: 10 (ports 48001-48010)
-- Proxy channels: 10 (ports 48101-48110)
+- Regular broadcasts: 10 (ports 48001-48010)
+- Proxy broadcasts: 10 (ports 48101-48110)
 
-**To expand:**
+**Channels (platforms) have no limit** - create as many platform destinations as needed.
+
+**To expand broadcasts:**
 1. Add more port ranges in HAProxy configuration
 2. Expose ports in firewall
-3. Add channels to database with new ports
+3. Create broadcasts with new ports
 
-Example extending to 20 regular channels:
+Example extending to 20 regular broadcasts:
 ```haproxy
 # In haproxy.cfg
 EXPOSE 48001-48020
 ```
 
-Then assign ports 48011-48020 to new channels in database.
+Then create broadcasts with ports 48011-48020:
+```bash
+./broadcastmod --create new-show 48011 "New Show"
+```
 
 ### Can I run multiple RTMP Proxy servers?
 
@@ -418,34 +423,51 @@ on_play http://nginx-http/rtmp/auth.php;
 
 ### Can I stream to multiple platforms?
 
-**Yes! Multi-platform support is built-in.**
+**Yes! Multi-platform simultaneous streaming is built-in.**
 
 **Supported platforms:**
-- Twitch (automatic stream key via API)
+- Twitch (automatic stream key via API or manual)
 - Instagram Live (manual stream key)
 - Facebook Live (manual stream key)
-- YouTube Live (manual stream key)
+- YouTube Live (automatic stream key via API or manual)
 
-**Configure a platform channel:**
+**How it works:**
+1. Create channels for each platform (reusable destinations)
+2. Create a broadcast (RTMP ingress point)
+3. Link multiple channels to the broadcast
+4. Stream to the broadcast port, outputs to all linked channels
+
+**Example setup:**
 ```bash
-# Instagram
-channelmod --set myig platform instagram
-channelmod --set myig url rtmp://live-upload.instagram.com:80/rtmp
+cd tools
+
+# Create platform channels
+./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
+./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
+./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
+./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
+
+./channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp
+./channelmod --set my_instagram stream_key "<instagram_key>"
+
+./channelmod --create my_youtube youtube rtmp://a.rtmp.youtube.com/live2
+./channelmod --set my_youtube client_id "$YOUTUBE_CLIENT_ID"
+./channelmod --set my_youtube client_secret "$YOUTUBE_CLIENT_SECRET"
+./channelmod --set my_youtube refresh_token "$YOUTUBE_REFRESH_TOKEN"
+
+# Create broadcast and link all channels
+./broadcastmod --create main-show 48001 "Main Show"
+./broadcastmod --link main-show my_twitch
+./broadcastmod --link main-show my_instagram
+./broadcastmod --link main-show my_youtube
 
 # Start streaming
-containermod --start --name nginx-rtmp --caster JohnDoe \
-  --channel myig --game pubg --key <instagram_stream_key>
+./containermod --start --name nginx-rtmp --caster JohnDoe --broadcast main-show --game csgo
 ```
 
-See [Platform Configuration](Configuration#platform-configuration) for complete guide.
+Now when JohnDoe streams to port 48001, the stream outputs to Twitch, Instagram, and YouTube simultaneously!
 
-**Simultaneous multi-platform:**
-To stream to multiple platforms at once, create multiple channel entries with different ports and start multiple containers for the same caster:
-```bash
-# Stream to both Twitch and Instagram simultaneously
-containermod --start --name nginx-rtmp --caster JohnDoe --channel twitch-ch --game csgo
-containermod --start --name nginx-rtmp --caster JohnDoe --channel instagram-ch --game csgo --key <ig_key>
-```
+See [Configuration Guide](Configuration) for complete platform setup.
 
 ## Platform-Specific Questions
 
@@ -453,10 +475,11 @@ containermod --start --name nginx-rtmp --caster JohnDoe --channel instagram-ch -
 
 | Feature | Twitch | Instagram Live | Facebook Live | YouTube Live |
 |---------|--------|----------------|---------------|--------------|
-| **Stream Key** | Auto-fetch via API | Manual entry | Manual entry | Manual entry |
-| **Scheduled Streams** | Full support | Manual start only | Manual start only | Manual start only |
-| **Token Refresh** | Automated | N/A | N/A | N/A |
-| **OBS Requirements** | Any settings | 2s keyframes recommended | 2s keyframes recommended | 2-4s keyframes recommended |
+| **Stream Key** | Auto-fetch via API or manual | Manual entry | Manual entry | Auto-fetch via API or manual |
+| **API Credentials** | access_token, client_id, refresh_token | N/A | N/A | client_id, client_secret, refresh_token |
+| **Scheduled Streams** | Full support | Full support | Full support | Full support |
+| **Token Refresh** | Automated | N/A | N/A | Fresh token per use |
+| **OBS Requirements** | Any settings | 2s keyframes required | 2s keyframes required | 2-4s keyframes recommended |
 
 ### Why did my Instagram stream stop after 10 minutes?
 
@@ -480,19 +503,36 @@ For best compatibility with Instagram and Facebook Live:
 
 For YouTube, keyframe interval can be 2-4 seconds.
 
-### Can I use scheduled streams with Instagram/Facebook?
+### Can I use scheduled streams with Instagram/Facebook/YouTube?
 
-**Partially.** You can schedule the container start time in the database, but you must provide the stream key manually:
+**Yes! Scheduled streams work with all platforms.**
 
+**Setup:**
+1. Create channel with stream key stored in database:
 ```bash
-# Scheduled start works, but requires manual key
-containermod --start --name nginx-rtmp --caster JohnDoe \
-  --channel instagram-ch --game pubg --key <instagram_key>
+cd tools
+./channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp
+./channelmod --set my_instagram stream_key "<your_instagram_key>"
 ```
 
-Unlike Twitch (which fetches keys automatically), Instagram/Facebook don't provide public APIs for stream key retrieval.
+2. Create broadcast and link channel:
+```bash
+./broadcastmod --create main-show 48001 "Main Show"
+./broadcastmod --link main-show my_instagram
+```
 
-**Workaround:** Store platform-specific stream keys in the `channels.stream_key` database field and modify `containermod` to read from there instead of requiring `--key`.
+3. Schedule stream normally:
+```bash
+./streammod --add
+# Select: JohnDoe, main-show, pubg
+```
+
+The stream key is read from the database at container start. No manual `--key` parameter needed.
+
+**API credentials (optional):**
+- **Twitch/YouTube with API**: Stream keys auto-fetched at container start
+- **Twitch/YouTube without API**: Uses stored `stream_key` from database
+- **Instagram/Facebook**: Always uses stored `stream_key` (no API available)
 
 ## Miscellaneous
 

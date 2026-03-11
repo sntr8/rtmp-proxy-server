@@ -298,7 +298,7 @@ run_nginx_rtmp_container() {
         echo "Fetching channels for broadcast '$BROADCAST'..."
 
         CHANNEL_DATA=$(mysql_exec_silent "
-            SELECT CONCAT(c.name, '|', c.platform, '|', c.stream_url, '|', COALESCE(c.stream_key, ''), '|', COALESCE(c.access_token, ''), '|', COALESCE(c.client_id, ''))
+            SELECT CONCAT(c.name, '|', c.platform, '|', c.stream_url, '|', COALESCE(c.stream_key, ''), '|', COALESCE(c.access_token, ''), '|', COALESCE(c.client_id, ''), '|', COALESCE(c.client_secret, ''), '|', COALESCE(c.refresh_token, ''))
             FROM channels c
             JOIN broadcast_channels bc ON bc.channel_id = c.id
             WHERE bc.broadcast_id = $BROADCAST_ID
@@ -318,41 +318,59 @@ run_nginx_rtmp_container() {
         OUTPUTS=""
         HAS_ERROR=false
 
-        while IFS='|' read -r CH_NAME CH_PLATFORM CH_URL CH_KEY CH_ACCESS_TOKEN CH_CLIENT_ID; do
+        while IFS='|' read -r CH_NAME CH_PLATFORM CH_URL CH_KEY CH_ACCESS_TOKEN CH_CLIENT_ID CH_CLIENT_SECRET CH_REFRESH_TOKEN; do
             CH_PLATFORM=$(strip_cr "$CH_PLATFORM")
             CH_KEY=$(strip_cr "$CH_KEY")
             CH_ACCESS_TOKEN=$(strip_cr "$CH_ACCESS_TOKEN")
             CH_CLIENT_ID=$(strip_cr "$CH_CLIENT_ID")
+            CH_CLIENT_SECRET=$(strip_cr "$CH_CLIENT_SECRET")
+            CH_REFRESH_TOKEN=$(strip_cr "$CH_REFRESH_TOKEN")
 
-            # For Twitch channels with API credentials, try to auto-fetch the key
-            if [ "$CH_PLATFORM" = "twitch" ] && [ ! -z "$CH_ACCESS_TOKEN" ] && [ ! -z "$CH_CLIENT_ID" ];
+            # Auto-fetch for platforms that support API (Twitch, YouTube)
+            if [[ "$CH_PLATFORM" == "twitch" || "$CH_PLATFORM" == "youtube" ]] && [ ! -z "$CH_CLIENT_ID" ];
             then
-                echo "  - $CH_NAME ($CH_PLATFORM) - Fetching stream key from API..."
-                FETCHED_KEY=$(twitch_get_stream_key "$CH_NAME" 2>/dev/null)
-
-                if [ $? -eq 0 ] && [ ! -z "$FETCHED_KEY" ] && [ "$FETCHED_KEY" != "null" ];
+                # YouTube also needs client_secret
+                if [ "$CH_PLATFORM" = "youtube" ] && [ -z "$CH_CLIENT_SECRET" ];
                 then
-                    CH_KEY="$FETCHED_KEY"
-                    echo "    ✓ Stream key fetched from Twitch API"
-
-                    # Store the fetched key for future reference
-                    mysql_exec_silent "UPDATE channels SET stream_key = '$FETCHED_KEY' WHERE name = '$CH_NAME'" 2>/dev/null
-                elif [ ! -z "$CH_KEY" ];
-                then
-                    echo "    ! API fetch failed, using stored key"
+                    echo "  - $CH_NAME ($CH_PLATFORM) - Missing client_secret"
+                    if [ -z "$CH_KEY" ];
+                    then
+                        echo "  ERROR: No stream key for channel '$CH_NAME' ($CH_PLATFORM)"
+                        echo "         Set client_secret or provide manual key: channelmod --set $CH_NAME stream_key <your_key>"
+                        HAS_ERROR=true
+                        continue
+                    fi
+                    echo "    Using stored key"
                 else
-                    echo "  ERROR: No stream key for channel '$CH_NAME' ($CH_PLATFORM)"
-                    echo "         API fetch failed and no stored key available"
-                    echo "         Set key manually: channelmod --set $CH_NAME stream_key <your_key>"
-                    HAS_ERROR=true
-                    continue
+                    echo "  - $CH_NAME ($CH_PLATFORM) - Fetching stream key from API..."
+                    FETCHED_KEY=$(get_platform_stream_key "$CH_NAME" 2>/dev/null)
+
+                    if [ $? -eq 0 ] && [ ! -z "$FETCHED_KEY" ] && [ "$FETCHED_KEY" != "null" ];
+                    then
+                        CH_KEY="$FETCHED_KEY"
+                        echo "    ✓ Stream key fetched from API"
+
+                        # Store for future reference (Twitch only - YouTube tokens are short-lived)
+                        if [ "$CH_PLATFORM" = "twitch" ];
+                        then
+                            mysql_exec_silent "UPDATE channels SET stream_key = '$FETCHED_KEY' WHERE name = '$CH_NAME'" 2>/dev/null
+                        fi
+                    elif [ ! -z "$CH_KEY" ];
+                    then
+                        echo "    ! API fetch failed, using stored key"
+                    else
+                        echo "  ERROR: No stream key for channel '$CH_NAME' ($CH_PLATFORM)"
+                        echo "         API fetch failed and no stored key available"
+                        HAS_ERROR=true
+                        continue
+                    fi
                 fi
             else
-                # Non-Twitch or Twitch without API credentials
+                # Platforms without API support or missing API credentials
                 if [ -z "$CH_KEY" ];
                 then
                     echo "  ERROR: No stream key for channel '$CH_NAME' ($CH_PLATFORM)"
-                    if [ "$CH_PLATFORM" = "twitch" ];
+                    if [[ "$CH_PLATFORM" == "twitch" || "$CH_PLATFORM" == "youtube" ]];
                     then
                         echo "         Either set key manually: channelmod --set $CH_NAME stream_key <your_key>"
                         echo "         Or configure API credentials and use: channelmod --auto-fetch-key $CH_NAME"
