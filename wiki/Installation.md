@@ -21,11 +21,29 @@ Complete step-by-step guide for installing RTMP Proxy Server from scratch.
   - Ports 48101-48110 (RTMP proxy channels)
   - Optional: Port 8404 (HAProxy stats dashboard)
 
-### Twitch Requirements
+### Streaming Platform Requirements
+
+**Twitch:**
 - Twitch account(s) for channels you want to stream to
 - Twitch API credentials (Client ID, Access Token, Refresh Token)
   - Get these from [twitchtokengenerator.com](https://twitchtokengenerator.com)
   - Requires: `channel:manage:broadcast`, `channel:read:stream_key` scopes
+
+**YouTube:**
+- YouTube account with live streaming enabled
+- Option 1: API credentials (Client ID, Client Secret, Refresh Token) for auto-fetch
+  - Get from [Google Cloud Console](https://console.cloud.google.com)
+  - Enable YouTube Data API v3
+  - Scope: `youtube.readonly`
+- Option 2: Manual stream key from [YouTube Live Dashboard](https://youtube.com/live_dashboard)
+
+**Instagram:**
+- Instagram account with live streaming access
+- Manual stream key from [Instagram Live Producer](https://www.instagram.com/live/producer)
+
+**Facebook:**
+- Facebook page or profile with live streaming access
+- Manual stream key from [Facebook Live Producer](https://facebook.com/live/producer)
 
 ### Optional
 - GitLab account for HAProxy config backup
@@ -50,13 +68,14 @@ echo 'Defaults env_keep += "FQDN MYSQL_* TWITCH_* HAPROXY_VERSION MYSQL_VERSION 
 cd tools
 ./build_all_images.sh v1.6
 ./containermod --start --name mysql
-docker exec -i mysql mysql -uroot -p$MYSQL_ROOT_PASSWORD $MYSQL_DATABASE < ../mysql/db/schema.sql
 
-# Add channel and start
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, access_token_expires, port, url)
-   VALUES ('yourchannel', 'YourChannel', '$TWITCH_ACCESS_TOKEN', '$TWITCH_CLIENT_ID',
-   '$TWITCH_REFRESH_TOKEN', DATE_ADD(NOW(), INTERVAL 60 DAY), 48001, 'https://twitch.tv/yourchannel')"
+# Add channel, broadcast, and caster
+./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
+./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
+./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
+./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
+./broadcastmod --create main-show 48001 "Main Show"
+./broadcastmod --link main-show my_twitch
 ./containermod --start --all
 ./castermod --add JohnDoe 123456789012345678
 ./streammod --add
@@ -165,71 +184,94 @@ Start the MySQL container:
 ./containermod --start --name mysql
 ```
 
-Wait 10 seconds for MySQL to initialize, then create the database schema:
-```bash
-docker exec -i mysql mysql -uroot -p$MYSQL_ROOT_PASSWORD $MYSQL_DATABASE < ../mysql/db/schema.sql
-```
+**The database schema is automatically initialized on first start.** Wait ~10 seconds for MySQL to complete initialization.
 
 **Verify database:**
 ```bash
 docker exec mysql mysql --defaults-extra-file=/creds.cnf -e "SHOW TABLES;"
 ```
 
-You should see: `casters`, `channels`, `games`, `streams`.
+You should see: `broadcasts`, `broadcast_channels`, `casters`, `channels`, `games`, `streams`.
 
-### Step 5: Add Twitch Channels
+### Step 5: Add Platform Channels
 
-Add each Twitch channel you want to stream to.
+Channels are reusable platform destinations (Twitch, Instagram, YouTube, Facebook). Create channels using `channelmod`.
 
-**IMPORTANT:** Each Twitch channel requires **its own unique credentials** (access token, client ID, refresh token). You must obtain separate credentials from [twitchtokengenerator.com](https://twitchtokengenerator.com) for each channel.
-
-**First channel** (using environment variables):
+**Twitch (with API for auto-fetch):**
 ```bash
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, access_token_expires, port, url)
-   VALUES (
-     'yourchannel',                    # Twitch channel name (lowercase)
-     'YourChannel',                    # Display name (matches Twitch exactly)
-     '$TWITCH_ACCESS_TOKEN',           # From environment variable
-     '$TWITCH_CLIENT_ID',              # From environment variable
-     '$TWITCH_REFRESH_TOKEN',          # From environment variable
-     DATE_ADD(NOW(), INTERVAL 60 DAY), # Token expiry (60 days)
-     48001,                            # Port for this channel (48001-48010)
-     'https://twitch.tv/yourchannel'   # Channel URL
-   )"
+./channelmod --create my_twitch twitch rtmp://live.twitch.tv/app
+./channelmod --set my_twitch access_token "$TWITCH_ACCESS_TOKEN"
+./channelmod --set my_twitch client_id "$TWITCH_CLIENT_ID"
+./channelmod --set my_twitch refresh_token "$TWITCH_REFRESH_TOKEN"
+./channelmod --set my_twitch display_name "My Twitch Channel"
 ```
 
-**Additional channels** (must use channel-specific credentials):
+**Instagram (manual key only):**
 ```bash
-# Get credentials for second channel from twitchtokengenerator.com
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, access_token_expires, port, url)
-   VALUES (
-     'secondchannel',                     # Different Twitch channel
-     'SecondChannel',
-     'second_channel_access_token_here',  # DIFFERENT credentials
-     'second_channel_client_id_here',     # DIFFERENT credentials
-     'second_channel_refresh_token_here', # DIFFERENT credentials
-     DATE_ADD(NOW(), INTERVAL 60 DAY),
-     48002,                               # Different port
-     'https://twitch.tv/secondchannel'
-   )"
+./channelmod --create my_instagram instagram rtmp://live-upload.instagram.com:80/rtmp
+./channelmod --set my_instagram stream_key "<instagram_stream_key>"
+./channelmod --set my_instagram display_name "My Instagram"
+```
+
+**YouTube (with API for auto-fetch):**
+```bash
+./channelmod --create my_youtube youtube rtmp://a.rtmp.youtube.com/live2
+./channelmod --set my_youtube client_id "$YOUTUBE_CLIENT_ID"
+./channelmod --set my_youtube client_secret "$YOUTUBE_CLIENT_SECRET"
+./channelmod --set my_youtube refresh_token "$YOUTUBE_REFRESH_TOKEN"
+./channelmod --set my_youtube display_name "My YouTube"
+```
+
+**Facebook (manual key only):**
+```bash
+./channelmod --create my_facebook facebook rtmps://live-api-s.facebook.com:443/rtmp
+./channelmod --set my_facebook stream_key "<facebook_stream_key>"
+./channelmod --set my_facebook display_name "My Facebook"
+```
+
+**View all channels:**
+```bash
+./channelmod --list
+```
+
+**Note:** Twitch and YouTube support API auto-fetch (keys fetched at container start). Instagram and Facebook require manual stream keys.
+
+### Step 6: Create Broadcasts and Link Channels
+
+Broadcasts are RTMP ingress points with ports (48001-48010). Link channels to broadcasts to create output streams.
+
+**Create a broadcast:**
+```bash
+./broadcastmod --create main-show 48001 "Main Show"
+```
+
+**Link channels to the broadcast:**
+```bash
+./broadcastmod --link main-show my_twitch
+./broadcastmod --link main-show my_instagram
+./broadcastmod --link main-show my_youtube
+```
+
+**Create additional broadcasts:**
+```bash
+./broadcastmod --create evening-cast 48002 "Evening Cast"
+./broadcastmod --link evening-cast my_twitch
+
+./broadcastmod --create tournament 48003 "Tournament"
+./broadcastmod --link tournament my_twitch
+./broadcastmod --link tournament my_facebook
+```
+
+**View all broadcasts:**
+```bash
+./broadcastmod --list
 ```
 
 **Port Assignment:**
-- First channel: 48001
-- Second channel: 48002
-- Third channel: 48003
-- etc.
+- Main broadcasts: 48001-48010 (for normal streams)
+- Proxy broadcasts: 48101-48110 (for internal relay, pre-configured)
 
-**For proxy-only channels** (internal relay, no Twitch output):
-```bash
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "INSERT INTO channels (name, display_name, port, url)
-   VALUES ('only1-proxy', 'Proxy Channel 1', 48101, '')"
-```
-
-### Step 6: Start Base Infrastructure
+### Step 7: Start Base Infrastructure
 
 Start all base containers (haproxy, nginx-http, php-fpm):
 ```bash
@@ -254,7 +296,7 @@ You should see: `haproxy`, `nginx-http`, `php-fpm`, `mysql`.
 https://stream.yourdomain.com:8404/stats
 ```
 
-### Step 7: Add Streamers (Casters)
+### Step 8: Add Streamers (Casters)
 
 Add each streamer who will use the system:
 
@@ -276,7 +318,7 @@ This will:
 ./castermod --list
 ```
 
-### Step 8: Add Games
+### Step 9: Add Games
 
 Add games that will be streamed:
 
@@ -302,7 +344,7 @@ Follow the interactive prompts:
 ./gamemod --add pubg "PlayerUnknown's Battlegrounds" "PUBG" 480
 ```
 
-### Step 9: Schedule Streams
+### Step 10: Schedule Streams
 
 Schedule a stream:
 
@@ -328,7 +370,7 @@ Follow the interactive prompts:
 ./streammod --live       # Currently active
 ```
 
-### Step 10: Set Up Automation
+### Step 11: Set Up Automation
 
 Add cron job to automatically manage containers based on schedules:
 
@@ -358,7 +400,7 @@ tail -f /var/log/stream-cron.log
 1. Start a test stream container:
 ```bash
 cd tools
-./containermod --start --name nginx-rtmp --caster JohnDoe --channel yourchannel --game csgo
+./containermod --start --name nginx-rtmp --caster JohnDoe --broadcast main-show --game csgo
 ```
 
 2. Configure OBS:
@@ -367,7 +409,7 @@ cd tools
 
 3. Start streaming in OBS
 
-4. Check Twitch channel for output
+4. Check output on linked platform channels (Twitch, Instagram, etc.)
 
 5. Stop container:
 ```bash

@@ -35,16 +35,16 @@ cd rtmp-proxy-server
 
 # 2. Configure environment variables
 sudo nano /etc/profile.d/stream.sh
-# Set: FQDN, ADMIN_EMAIL, MYSQL credentials, TWITCH tokens, container versions
+# Set: FQDN, ADMIN_EMAIL, MYSQL credentials, platform API tokens, container versions
+# Check the detailed installation guide for all required variables
 source /etc/profile.d/stream.sh
 
 # 3. Build images
 cd tools
 ./build_all_images.sh v1.6
 
-# 4. Initialize database
+# 4. Start database (auto-initializes on first run)
 ./containermod --start --name mysql
-docker exec -i mysql mysql -uroot -p$MYSQL_ROOT_PASSWORD $MYSQL_DATABASE < ../mysql/db/schema.sql
 
 # 5. Add platform channels (destinations)
 # Twitch channel
