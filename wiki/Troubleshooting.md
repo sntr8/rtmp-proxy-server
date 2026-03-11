@@ -577,13 +577,6 @@ docker exec -i mysql mysql -uroot -p$MYSQL_ROOT_PASSWORD $MYSQL_DATABASE < backu
 
 **Symptom:** Twitch API calls fail with 401 Unauthorized
 
-**Diagnosis:**
-
-```bash
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "SELECT name, access_token_expires FROM channels WHERE name = 'mainchannel'"
-```
-
 **Solution:**
 
 ```bash
@@ -595,7 +588,6 @@ If refresh fails, get new tokens from [twitchtokengenerator.com](https://twitcht
 ```bash
 ./channelmod --set mainchannel access_token "new_token"
 ./channelmod --set mainchannel refresh_token "new_refresh_token"
-./channelmod --set mainchannel access_token_expires "2026-06-01 00:00:00"
 ```
 
 ### Wrong Twitch Category

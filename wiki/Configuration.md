@@ -4,6 +4,7 @@ Comprehensive guide for configuring RTMP Proxy Server.
 
 ## Table of Contents
 
+- [Platform Configuration](#platform-configuration)
 - [Games Configuration](#games-configuration)
 - [Channels Configuration](#channels-configuration)
 - [Casters Configuration](#casters-configuration)
@@ -12,6 +13,95 @@ Comprehensive guide for configuring RTMP Proxy Server.
 - [Discord Notifications](#discord-notifications)
 - [HAProxy Configuration](#haproxy-configuration)
 - [Advanced Settings](#advanced-settings)
+
+## Platform Configuration
+
+RTMP Proxy Server supports streaming to multiple platforms with platform-specific optimizations.
+
+### Supported Platforms
+
+| Platform | Stream Key Source | Notes |
+|----------|-------------------|-------|
+| **Twitch** | API (automatic) | Full automation support |
+| **Instagram Live** | Manual | Requires stream key from Instagram |
+| **Facebook Live** | Manual | Requires stream key from Facebook |
+| **YouTube Live** | Manual | Requires stream key from YouTube |
+
+### Platform Settings
+
+Each channel in the database has a `platform` field that determines:
+- **Default RTMP ingest URL**
+- **Stream key handling**
+
+### Default Platform URLs
+
+```
+Twitch:    rtmp://live.twitch.tv/app
+Instagram: rtmp://live-upload.instagram.com:80/rtmp
+Facebook:  rtmps://live-api-s.facebook.com:443/rtmp
+YouTube:   rtmp://a.rtmp.youtube.com/live2
+```
+
+You can edit the platform URL later with command
+
+```bash
+channelmod --set <channel> url <url>
+
+#For example
+channelmod --set myfb url rtmps://live-api-s.facebook.com:443/rtmp
+```
+
+### Starting a Stream to Non-Twitch Platforms
+
+For Instagram, Facebook, and YouTube, you must provide the stream key manually using `--key`:
+
+```bash
+# Instagram Live
+containermod --start --name nginx-rtmp --caster JohnDoe \
+  --channel myig --game pubg --key <instagram_stream_key>
+
+# Facebook Live
+containermod --start --name nginx-rtmp --caster JohnDoe \
+  --channel myfb --game csgo --key <facebook_stream_key>
+
+# YouTube Live
+containermod --start --name nginx-rtmp --caster JohnDoe \
+  --channel myyt --game lol --key <youtube_stream_key>
+```
+
+**Why manual keys?** Instagram, Facebook, and YouTube don't provide public APIs for automatic stream key retrieval like Twitch does.
+
+### Important Configuration Notes
+
+**OBS Settings for Instagram/Facebook:**
+To ensure compatibility with Instagram and Facebook Live, configure your OBS with:
+- **Video Codec**: H.264
+- **Keyframe Interval**: 2 seconds
+- **Audio Codec**: AAC, 44.1kHz, 128kbps
+- **Rate Control**: CBR
+- **Bitrate**: 3000-4000 kbps recommended
+
+**YouTube Settings:**
+- Same as above, but keyframe interval can be up to 4 seconds
+
+The system uses passthrough (`-codec copy`) for all platforms, relying on correct OBS configuration.
+
+### Getting Stream Keys
+
+**Instagram Live:**
+1. Use Instagram Live Producer or third-party tools
+2. Navigate to live settings
+3. Copy RTMP URL and Stream Key
+
+**Facebook Live:**
+1. Go to facebook.com/live/producer
+2. Create new live stream
+3. Copy Stream Key from settings
+
+**YouTube Live:**
+1. Go to youtube.com/live_dashboard
+2. Create stream or event
+3. Copy Stream key from Stream settings
 
 ## Games Configuration
 
@@ -96,18 +186,32 @@ Channels represent Twitch channels where streams are published.
 
 ### Adding a Channel
 
+**Twitch Channel:**
 ```bash
 docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, access_token_expires, port, url)
+  "INSERT INTO channels (name, platform, display_name, access_token, client_id, refresh_token, port, url)
    VALUES (
      'yourchannel',                        # Channel name (lowercase)
+     'twitch',                             # Platform
      'YourChannel',                        # Display name (exact Twitch capitalization)
      '$TWITCH_ACCESS_TOKEN',               # OAuth token
      '$TWITCH_CLIENT_ID',                  # Client ID
      '$TWITCH_REFRESH_TOKEN',              # Refresh token
-     DATE_ADD(NOW(), INTERVAL 60 DAY),     # Expiry (60 days)
      48001,                                # RTMP port
      'https://twitch.tv/yourchannel'       # Channel URL
+   )"
+```
+
+**Instagram/Facebook/YouTube Channel:**
+```bash
+docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
+  "INSERT INTO channels (name, platform, display_name, port, url)
+   VALUES (
+     'myig',                                            # Channel name
+     'instagram',                                       # Platform
+     'My Instagram',                                    # Display name
+     48002,                                             # RTMP port (must be unique)
+     'rtmp://live-upload.instagram.com:80/rtmp'         # Platform RTMP URL
    )"
 ```
 
@@ -159,25 +263,38 @@ docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
 # Examples:
 ./channelmod --set yourchannel display_name "YourNewName"
 ./channelmod --set yourchannel url "https://twitch.tv/yournewname"
-./channelmod --set yourchannel port 48005
+./channelmod --set yourchannel platform instagram
+./channelmod --set myig url rtmp://live-upload.instagram.com:80/rtmp
+
+# Twitch-specific (API tokens)
+./channelmod --set yourchannel access_token "new_token_here"
+./channelmod --set yourchannel client_id "new_client_id"
+./channelmod --set yourchannel refresh_token "new_refresh_token"
 ```
+
+**Available fields**: `platform`, `display_name`, `url`, `access_token`, `client_id`, `refresh_token`
+
+See [Platform Configuration](#platform-configuration) for detailed multi-platform setup.
 
 ### Database Schema
 
 ```sql
 CREATE TABLE channels (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) UNIQUE NOT NULL,          -- Channel identifier
-    display_name VARCHAR(255) NOT NULL,         -- Display name
-    access_token TEXT,                           -- OAuth access token
-    client_id VARCHAR(255),                      -- Twitch client ID
-    refresh_token TEXT,                          -- OAuth refresh token
-    access_token_expires DATETIME,               -- Token expiry
-    port INT UNIQUE NOT NULL,                    -- RTMP port
-    url VARCHAR(255) NOT NULL,                   -- Twitch URL
-    stream_key VARCHAR(255)                      -- Twitch stream key (optional)
+    name VARCHAR(255) UNIQUE NOT NULL,                              -- Channel identifier
+    platform ENUM('twitch', 'instagram', 'facebook', 'youtube')      -- Streaming platform
+        NOT NULL DEFAULT 'twitch',
+    display_name VARCHAR(255) NOT NULL,                             -- Display name
+    access_token TEXT,                                              -- OAuth access token (Twitch only)
+    client_id VARCHAR(255),                                         -- Twitch client ID
+    refresh_token TEXT,                                             -- OAuth refresh token (Twitch only)
+    port INT UNIQUE NOT NULL,                                       -- RTMP port
+    url VARCHAR(255) NOT NULL,                                      -- Platform RTMP URL
+    stream_key VARCHAR(255)                                         -- Stream key (optional)
 );
 ```
+
+**Note**: The `platform` field determines encoding parameters and stream handling. Twitch channels use API tokens, while other platforms require manual stream keys.
 
 ## Casters Configuration
 
@@ -295,7 +412,6 @@ export TWITCH_REFRESH_TOKEN="your_refresh_token"
 ./channelmod --set yourchannel access_token "new_token_here"
 ./channelmod --set yourchannel refresh_token "new_refresh_token"
 ./channelmod --set yourchannel client_id "new_client_id"
-./channelmod --set yourchannel access_token_expires "2026-05-01 00:00:00"
 ```
 
 ### Refreshing Tokens
@@ -321,12 +437,7 @@ Runs weekly on Sundays at 2 AM.
 
 ### Checking Token Status
 
-```bash
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "SELECT name, access_token_expires FROM channels WHERE name NOT LIKE '%proxy%'"
-```
-
-Shows expiry dates for all channels.
+TODO!
 
 ## Advertisements
 

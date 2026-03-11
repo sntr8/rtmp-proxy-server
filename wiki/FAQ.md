@@ -57,7 +57,7 @@ Depends on server resources:
 
 **Per nginx-rtmp container:**
 - ~100-200 MB RAM
-- CPU: 20-50% of one core (varies with resolution/bitrate)
+- CPU: ~5-10% of one core (passthrough)
 - Bandwidth: ~5 Mbps upload per stream
 
 **Example capacity:**
@@ -65,9 +65,10 @@ Depends on server resources:
 - **16 GB RAM, 8 cores, 500 Mbps:** ~40-50 concurrent streams
 
 **Bottlenecks:**
-1. CPU (FFmpeg encoding/transcoding)
-2. Upload bandwidth
+1. Upload bandwidth
+2. CPU (FFmpeg passthrough and delay processing)
 3. Disk I/O (if using delay/recording)
+4. RAM
 
 ### How many channels can I add?
 
@@ -185,12 +186,6 @@ Runs weekly on Sundays at 2 AM, uses refresh token to get new access token.
 ```bash
 cd tools
 ./channelmod --refresh-tokens <channel_name>
-```
-
-**Monitor expiry:**
-```bash
-docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "SELECT name, access_token_expires FROM channels"
 ```
 
 ### What happens if a stream goes overtime?
@@ -423,16 +418,81 @@ on_play http://nginx-http/rtmp/auth.php;
 
 ### Can I stream to multiple platforms?
 
-Yes, with FFmpeg multi-output:
+**Yes! Multi-platform support is built-in.**
 
-Edit `nginx_proxy.conf.template`:
-```nginx
-exec_push /usr/bin/ffmpeg -re -i rtmp://127.0.0.1/${app}/${name}
-          -c copy -f flv rtmp://live.twitch.tv/app/${TWITCH_KEY}
-          -c copy -f flv rtmp://a.rtmp.youtube.com/live2/${YOUTUBE_KEY};
+**Supported platforms:**
+- Twitch (automatic stream key via API)
+- Instagram Live (manual stream key)
+- Facebook Live (manual stream key)
+- YouTube Live (manual stream key)
+
+**Configure a platform channel:**
+```bash
+# Instagram
+channelmod --set myig platform instagram
+channelmod --set myig url rtmp://live-upload.instagram.com:80/rtmp
+
+# Start streaming
+containermod --start --name nginx-rtmp --caster JohnDoe \
+  --channel myig --game pubg --key <instagram_stream_key>
 ```
 
-Requires YouTube stream key in database and container environment.
+See [Platform Configuration](Configuration#platform-configuration) for complete guide.
+
+**Simultaneous multi-platform:**
+To stream to multiple platforms at once, create multiple channel entries with different ports and start multiple containers for the same caster:
+```bash
+# Stream to both Twitch and Instagram simultaneously
+containermod --start --name nginx-rtmp --caster JohnDoe --channel twitch-ch --game csgo
+containermod --start --name nginx-rtmp --caster JohnDoe --channel instagram-ch --game csgo --key <ig_key>
+```
+
+## Platform-Specific Questions
+
+### What are the differences between platforms?
+
+| Feature | Twitch | Instagram Live | Facebook Live | YouTube Live |
+|---------|--------|----------------|---------------|--------------|
+| **Stream Key** | Auto-fetch via API | Manual entry | Manual entry | Manual entry |
+| **Scheduled Streams** | Full support | Manual start only | Manual start only | Manual start only |
+| **Token Refresh** | Automated | N/A | N/A | N/A |
+| **OBS Requirements** | Any settings | 2s keyframes recommended | 2s keyframes recommended | 2-4s keyframes recommended |
+
+### Why did my Instagram stream stop after 10 minutes?
+
+**Fixed in current version!** The issue was missing keepalive pings. Instagram's servers disconnect streams that appear idle/unstable.
+
+**Solution applied:**
+- Added `ping 30s` keepalive signals
+- Added `ping_timeout 30s` for response timeout
+- Added `timeout 60s` for connection timeout
+
+If you're still experiencing this, ensure you've rebuilt the nginx-rtmp image with the latest templates.
+
+### What OBS settings should I use for Instagram/Facebook?
+
+For best compatibility with Instagram and Facebook Live:
+- **Video Codec**: H.264
+- **Keyframe Interval**: 2 seconds (very important!)
+- **Audio Codec**: AAC, 44.1kHz, 128kbps
+- **Rate Control**: CBR
+- **Bitrate**: 3000-4000 kbps
+
+For YouTube, keyframe interval can be 2-4 seconds.
+
+### Can I use scheduled streams with Instagram/Facebook?
+
+**Partially.** You can schedule the container start time in the database, but you must provide the stream key manually:
+
+```bash
+# Scheduled start works, but requires manual key
+containermod --start --name nginx-rtmp --caster JohnDoe \
+  --channel instagram-ch --game pubg --key <instagram_key>
+```
+
+Unlike Twitch (which fetches keys automatically), Instagram/Facebook don't provide public APIs for stream key retrieval.
+
+**Workaround:** Store platform-specific stream keys in the `channels.stream_key` database field and modify `containermod` to read from there instead of requiring `--key`.
 
 ## Miscellaneous
 

@@ -135,8 +135,50 @@ case $OPERATION in
                     echo "Refresh token change failed"
                 fi
             ;;
+            "platform")
+                # Validate platform value
+                if [[ ! "$SAFE_VALUE" =~ ^(twitch|instagram|facebook|youtube)$ ]];
+                then
+                    echo "Invalid platform. Allowed values are: twitch, instagram, facebook, youtube"
+                    exit 1
+                fi
+                if mysql_exec "UPDATE channels SET platform = '$SAFE_VALUE' WHERE name = '$CHANNEL'";
+                then
+                    echo "Platform updated to $SAFE_VALUE for channel $CHANNEL"
+                    exit 0
+                else
+                    echo "Platform change failed"
+                fi
+            ;;
+            "url")
+                if mysql_exec "UPDATE channels SET url = '$SAFE_VALUE' WHERE name = '$CHANNEL'";
+                then
+                    echo "URL updated for channel $CHANNEL"
+                    exit 0
+                else
+                    echo "URL change failed"
+                fi
+            ;;
+            "display_name")
+                if mysql_exec "UPDATE channels SET display_name = '$SAFE_VALUE' WHERE name = '$CHANNEL'";
+                then
+                    echo "Display name updated for channel $CHANNEL"
+                    exit 0
+                else
+                    echo "Display name change failed"
+                fi
+            ;;
+            "stream_key")
+                if mysql_exec "UPDATE channels SET stream_key = '$SAFE_VALUE' WHERE name = '$CHANNEL'";
+                then
+                    echo "Stream key updated for channel $CHANNEL"
+                    exit 0
+                else
+                    echo "Stream key change failed"
+                fi
+            ;;
             *)
-                echo "Key not recognised. Allowed values are: access_token, client_id and refresh_token"
+                echo "Key not recognised. Allowed values are: access_token, client_id, refresh_token, platform, url, display_name, stream_key"
                 exit 1
             ;;
         esac
@@ -199,12 +241,12 @@ case $OPERATION in
         esac
     ;;
     "--help")
-        echo "$SCRIPT_NAME -- Manage Twitch channels and API tokens
+        echo "$SCRIPT_NAME -- Manage streaming channels and API tokens
 
 DESCRIPTION:
-  Manage Twitch channel configurations, including API tokens for stream key fetching
-  and channel information updates. Handles both regular Twitch channels and internal
-  proxy channels.
+  Manage channel configurations for multiple platforms (Twitch, Instagram, Facebook, YouTube).
+  Includes API token management for Twitch channels and platform-specific settings.
+  Handles both regular streaming channels and internal proxy channels.
 
 USAGE:
   $SCRIPT_NAME <operation> [parameters]
@@ -240,12 +282,15 @@ OPERATIONS:
 
     Parameters:
       - channel: Channel name (e.g., yourchannel)
-      - key:     Field to update (access_token, client_id, or refresh_token)
+      - key:     Field to update (access_token, client_id, refresh_token, platform, url, display_name)
       - value:   New value for the field
 
     Usage: $SCRIPT_NAME --set yourchannel access_token abc123xyz789
     Usage: $SCRIPT_NAME --set yourchannel client_id gp762nuuoqcoxypju8c569th9wz7q5
     Usage: $SCRIPT_NAME --set yourchannel refresh_token def456uvw012
+    Usage: $SCRIPT_NAME --set yourchannel platform instagram
+    Usage: $SCRIPT_NAME --set yourchannel url rtmp://live-upload.instagram.com:80/rtmp
+    Usage: $SCRIPT_NAME --set yourchannel display_name "My Channel"
 
   --refresh-tokens <channel>
     Manually trigger Twitch token refresh using twitchtokengenerator.com API.
@@ -281,11 +326,29 @@ EXAMPLES:
   channelmod --set yourchannel refresh_token new_refresh_token_here
   channelmod --set yourchannel client_id new_client_id_here
 
+  # Configure channel for Instagram
+  channelmod --set myig platform instagram
+  channelmod --set myig url rtmp://live-upload.instagram.com:80/rtmp
+  channelmod --set myig display_name "My Instagram"
+
   # Get current refresh token
   channelmod --get yourchannel refresh_token
 
+PLATFORM CONFIGURATION:
+  Supported platforms: twitch, instagram, facebook, youtube
+
+  Platform-specific settings:
+    - platform: Determines encoding parameters and stream URL format
+    - url:      RTMP ingest URL for the platform
+
+  Default RTMP URLs:
+    - Twitch:    rtmp://live.twitch.tv/app
+    - Instagram: rtmp://live-upload.instagram.com:80/rtmp
+    - Facebook:  rtmps://live-api-s.facebook.com:443/rtmp
+    - YouTube:   rtmp://a.rtmp.youtube.com/live2
+
 TWITCH API TOKENS:
-  Channels need three tokens from twitchtokengenerator.com:
+  Twitch channels need three tokens from twitchtokengenerator.com:
     - access_token:  Used for Twitch Helix API calls (expires in 60 days)
     - refresh_token: Used to refresh the access_token automatically
     - client_id:     Application identifier
@@ -299,6 +362,7 @@ NOTES:
   - Proxy channels (e.g., only1-proxy) don't have Twitch tokens
   - Token validation happens automatically when containers start
   - Failed token refresh triggers Discord alerts to support group
+  - Non-Twitch platforms require stream key to be provided via --key parameter
 "
         exit 0
     ;;

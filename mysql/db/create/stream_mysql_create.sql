@@ -30,11 +30,11 @@ CREATE TABLE `casters` (
 CREATE TABLE `channels` (
     `id` bigint NOT NULL AUTO_INCREMENT,
     `name` varchar(255) NOT NULL UNIQUE,
+    `platform` ENUM('twitch', 'instagram', 'facebook', 'youtube') NOT NULL DEFAULT 'twitch',
     `display_name` varchar(255),
     `access_token` varchar(255),
     `client_id` varchar(255),
     `refresh_token` varchar(255),
-    `access_token_expires` DATETIME,
     `port` int NOT NULL,
     `url` varchar(255),
     PRIMARY KEY (`id`)

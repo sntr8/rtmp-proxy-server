@@ -1,12 +1,13 @@
 # RTMP Proxy Server
 
-A Docker-based RTMP streaming proxy service that sits between streamers and Twitch, providing centralized stream management, authentication, configurable delays, and automated scheduling.
+A Docker-based RTMP streaming proxy service that sits between streamers and multiple platforms (Twitch, Instagram, Facebook, YouTube), providing centralized stream management, authentication, configurable delays, and automated scheduling.
 
 ## Features
 
-- **Centralized Authentication**: Manage streamer access—masks Twitch channel keys from streamers
+- **Multi-Platform Support**: Stream to Twitch, Instagram Live, Facebook Live, and YouTube simultaneously or independently
+- **Centralized Authentication**: Manage streamer access—masks channel keys from streamers
 - **Configurable Delay**: Apply per-game stream delays (e.g., 8 minutes for competitive games)
-- **Multi-Channel Support**: Route multiple streamers to different Twitch channels
+- **Multi-Channel Support**: Route multiple streamers to different channels across platforms
 - **Scheduled Streams**: Automate container startup/shutdown based on schedules
 - **Discord Integration**: Automated notifications for stream events
 - **Web-Based Ads**: Serve rotating advertisements via HTTP endpoint
@@ -19,7 +20,9 @@ A Docker-based RTMP streaming proxy service that sits between streamers and Twit
 
 - Linux server with Docker installed
 - Domain name pointing to your server
-- Twitch account(s) with API credentials
+- Platform account(s):
+  - **Twitch**: API credentials (client_id, access_token, refresh_token)
+  - **Instagram/Facebook/YouTube**: Stream keys from platform
 - At least 2GB RAM, 10GB disk space
 - **Open ports:** 80, 443, 48001-48010 (RTMP streams), 48101-48110 (RTMP proxies)
 
@@ -45,9 +48,9 @@ docker exec -i mysql mysql -uroot -p$MYSQL_ROOT_PASSWORD $MYSQL_DATABASE < ../my
 
 # 5. Add Twitch channel
 docker exec mysql mysql --defaults-extra-file=/creds.cnf -e \
-  "INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, access_token_expires, port, url)
+  "INSERT INTO channels (name, display_name, access_token, client_id, refresh_token, port, url)
    VALUES ('yourchannel', 'YourChannel', '$TWITCH_ACCESS_TOKEN', '$TWITCH_CLIENT_ID',
-   '$TWITCH_REFRESH_TOKEN', DATE_ADD(NOW(), INTERVAL 60 DAY), 48001, 'https://twitch.tv/yourchannel')"
+   '$TWITCH_REFRESH_TOKEN', 48001, 'https://twitch.tv/yourchannel')"
 
 # 6. Start base infrastructure
 ./containermod --start --all
@@ -93,7 +96,7 @@ Comprehensive scripts in `tools/`:
 - **containermod** - Start/stop/restart containers
 - **streammod** - Schedule and manage streams
 - **castermod** - Add/remove/manage streamers
-- **channelmod** - Manage Twitch channels and API tokens
+- **channelmod** - Manage channels and platform configuration
 - **gamemod** - Add/list games
 - **haproxy_configmod** - Manage HAProxy routing
 - **discordmod** - Send Discord notifications

@@ -4,12 +4,13 @@ Welcome to the RTMP Proxy Server documentation. This wiki provides comprehensive
 
 ## What is RTMP Proxy Server?
 
-A Docker-based streaming proxy that sits between streamers and Twitch, providing:
+A Docker-based streaming proxy that sits between streamers and multiple platforms (Twitch, Instagram Live, Facebook Live, YouTube), providing:
 
-- **Masked Credentials**: Streamers never see actual Twitch channel keys
+- **Multi-Platform Support**: Stream to Twitch, Instagram, Facebook, and YouTube
+- **Masked Credentials**: Streamers never see actual channel keys
 - **Stream Delay**: Configurable per-game delays (e.g., 8 minutes for competitive gaming)
 - **Centralized Management**: Schedule streams, manage access, automate workflows
-- **Multi-Channel Support**: Route multiple streamers to different Twitch channels
+- **Multi-Channel Support**: Route multiple streamers to different channels across platforms
 - **Advertisement System**: Serve rotating ads via HTTP endpoints
 
 ## Documentation Structure
